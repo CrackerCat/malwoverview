@@ -1,9 +1,18 @@
 import pefile
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, divider
+
+COL_FUNCTION = 40
+FUNCTION_COLUMNS = 3
+FUNCTION_GUTTER = 1
+FUNCTIONS_TABLE_WIDTH = (FUNCTION_COLUMNS * COL_FUNCTION
+                         + (FUNCTION_COLUMNS - 1) * FUNCTION_GUTTER)
 import malwoverview.modules.configvars as cv
 import magic
 import math
 import os
+from collections import Counter
+
+ENTROPY_CHUNK_SIZE = 1024 * 1024
 
 
 def ftype(filename):
@@ -22,18 +31,22 @@ def isoverlay(file_item):
 
 
 def rawentropy(file_item):
+    occurences = [0] * 256
+    length = 0
     try:
         with open(file_item, "rb") as f:
-            data = f.read()
+            while True:
+                chunk = f.read(ENTROPY_CHUNK_SIZE)
+                if not chunk:
+                    break
+                length += len(chunk)
+                for byte, count in Counter(chunk).items():
+                    occurences[byte] += count
     except Exception:
         return 0.0
-    if not data:
+    if not length:
         return 0.0
-    occurences = [0] * 256
-    for byte in data:
-        occurences[byte] += 1
     entropy = 0.0
-    length = len(data)
     for count in occurences:
         if count:
             p = float(count) / length
@@ -130,7 +143,7 @@ def list_imports_exports(targetfile):
     printr()
 
     print(("\nImported Functions".ljust(40)))
-    print((110 * '-').ljust(110))
+    print(divider(FUNCTIONS_TABLE_WIDTH))
     IR = []
     IR = sorted(listimports(targetfile))
     dic = {}
@@ -153,7 +166,7 @@ def list_imports_exports(targetfile):
         if (cv.bkg == 1):
             print((mycolors.foreground.pink + "%-40s" % (i)[2:-1]), end=' ')
         else:
-            print((mycolors.foreground.cyan + "%-40s" % (i)[2:-1]), end=' ')
+            print((mycolors.foreground.blue + "%-40s" % (i)[2:-1]), end=' ')
         w = next(Y, None)
         if w is None:
             break
@@ -180,7 +193,7 @@ def list_imports_exports(targetfile):
     printr()
 
     print(("\n\nExported Functions".ljust(40)))
-    print((110 * '-').ljust(110))
+    print(divider(FUNCTIONS_TABLE_WIDTH))
     ER = []
     ER = sorted(listexports(targetfile))
     dic2 = {}
@@ -223,6 +236,6 @@ def list_imports_exports(targetfile):
         if (cv.bkg == 1):
             print((mycolors.foreground.lightcyan + "%-40s" % (t)[2:-1]))
         else:
-            print((mycolors.foreground.cyan + "%-40s" % (t)[2:-1]))
+            print((mycolors.foreground.blue + "%-40s" % (t)[2:-1]))
 
     printr()

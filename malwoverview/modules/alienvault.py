@@ -1,10 +1,13 @@
 import malwoverview.modules.configvars as cv
 import requests
 import textwrap
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, divider, report_header
+
+IP_REPORT_WIDTH = 120
 import json
 from urllib.parse import quote
-from malwoverview.utils.session import create_session
+from malwoverview.utils.output import add_records
+from malwoverview.utils.session import create_session, failure_message
 
 
 class AlienVaultExtractor():
@@ -35,7 +38,8 @@ class AlienVaultExtractor():
             requestsession.headers.update({'Content-Type': 'application/json'})
             finalurl = '/'.join([resource, 'pulses', 'subscribed'])
             haresponse = requestsession.post(url=finalurl, headers=headers, params=search_params)
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('alienvault', 'alien_subscribed', hatext)
 
             if (cv.bkg == 1):
                 if 'results' in hatext:
@@ -43,8 +47,9 @@ class AlienVaultExtractor():
                     c = 1
                     for d in hatext['results']:
                         printr()
-                        print(mycolors.foreground.lightcyan + "INFORMATION: %d" % c)
-                        print(mycolors.reset + '-' * 15 + "\n")
+                        headline = "INFORMATION: %d" % c
+                        print(mycolors.foreground.lightcyan + headline)
+                        print(divider(len(headline)) + "\n")
                         if d['name']:
                             print(mycolors.foreground.yellow + "Headline:".ljust(13) + mycolors.reset + hatext['results'][x]['name'], end='\n')
                         if d['description']:
@@ -101,8 +106,9 @@ class AlienVaultExtractor():
                     c = 1
                     for d in hatext['results']:
                         printr()
-                        print(mycolors.foreground.purple + "INFORMATION: %d" % c)
-                        print(mycolors.reset + '-' * 15 + "\n")
+                        headline = "INFORMATION: %d" % c
+                        print(mycolors.foreground.purple + headline)
+                        print(divider(len(headline)) + "\n")
                         if d['name']:
                             print(mycolors.foreground.blue + "Headline:".ljust(13) + mycolors.reset + hatext['results'][x]['name'], end='\n')
                         if d['description']:
@@ -153,8 +159,8 @@ class AlienVaultExtractor():
                         x = x + 1
                         c = c + 1
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'AlienVault OTX'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Alien Vault!\n"))
             else:
@@ -181,7 +187,8 @@ class AlienVaultExtractor():
         self.requestALIENAPI()
         try:
             haresponse = self._raw_ip_info(arg1)
-            hatext = haresponse.json()
+            hatext = strip_json_escapes(haresponse.json())
+            add_records('alienvault', 'alien_ipv4', hatext)
 
             if (cv.bkg == 1):
                 if 'sections' in hatext:
@@ -196,7 +203,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nNo further information about the provided IP address!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         z = 0
                         i = 0
                         for key in hatext['pulse_info']:
@@ -251,9 +258,8 @@ class AlienVaultExtractor():
                                 print("\n".ljust(14) + mycolors.reset + ("\n".ljust(14)).join(textwrap.wrap(r, width=100)), end='\n')
             else:
                 if 'sections' in hatext:
-                    print(mycolors.reset + "\n\n" + "ALIEN VAULT IPv4 REPORT".center(120))
-                    printr()
-                    print(mycolors.reset + '-' * 120 + "\n")
+                    print("\n")
+                    print(report_header("ALIEN VAULT IPv4 REPORT", IP_REPORT_WIDTH) + "\n")
                     if hatext['asn']:
                         print(mycolors.foreground.green + "ASN:".ljust(13) + mycolors.reset + hatext['asn'], end='\n')
                     if hatext['city']:
@@ -264,7 +270,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nNo further information about the provided IP address!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         z = 0
                         i = 0
                         for key in hatext['pulse_info']:
@@ -317,8 +323,8 @@ class AlienVaultExtractor():
                             for r in hatext['pulse_info']['references']:
                                 print("\n".ljust(14) + mycolors.reset + ("\n".ljust(14)).join(textwrap.wrap(r, width=100)), end='\n')
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'AlienVault OTX'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Alien Vault!\n"))
             else:
@@ -344,7 +350,8 @@ class AlienVaultExtractor():
             requestsession.headers.update({'Content-Type': 'application/json'})
             finalurl = '/'.join([resource, 'indicators', 'domain', quote(myargs, safe='')])
             haresponse = requestsession.post(url=finalurl, headers=headers, params=search_params)
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('alienvault', 'alien_domain', hatext)
 
             if (cv.bkg == 1):
                 if 'indicator' in hatext:
@@ -355,7 +362,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nNot further information about the provided DOMAIN!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         if hatext['pulse_info']['pulses']:
                             i = 0
                             while (i < len(hatext['pulse_info']['pulses'])):
@@ -404,7 +411,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nNo further information about the provided DOMAIN!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         if hatext['pulse_info']['pulses']:
                             i = 0
                             while (i < len(hatext['pulse_info']['pulses'])):
@@ -444,8 +451,8 @@ class AlienVaultExtractor():
                             for r in hatext['pulse_info']['references']:
                                 print(mycolors.foreground.purple + "\nReferences: ".ljust(14) + mycolors.reset + ("\n".ljust(14)).join(textwrap.wrap(r, width=100)), end='')
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'AlienVault OTX'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Alien Vault!\n"))
             else:
@@ -471,7 +478,8 @@ class AlienVaultExtractor():
             requestsession.headers.update({'Content-Type': 'application/json'})
             finalurl = '/'.join([resource, 'indicators', 'file', quote(myargs, safe='')])
             haresponse = requestsession.post(url=finalurl, headers=headers, params=search_params)
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('alienvault', 'alien_hash', hatext)
 
             if (cv.bkg == 1):
                 if 'indicator' in hatext:
@@ -480,7 +488,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nNo further information about the provided HASH!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         i = 0
                         if 'pulses' in (hatext['pulse_info']):
                             while (i < len(hatext['pulse_info']['pulses'])):
@@ -545,13 +553,13 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nNo further information about the provided HASH!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         i = 0
                         if 'pulses' in (hatext['pulse_info']):
                             while (i < len(hatext['pulse_info']['pulses'])):
                                 if "tags" in (hatext['pulse_info']['pulses'][i]):
                                     if (hatext['pulse_info']['pulses'][i]['tags']):
-                                        print(mycolors.foreground.cyan + "\nTags:".ljust(13), end='')
+                                        print(mycolors.foreground.blue + "\nTags:".ljust(13), end='')
                                         b = 0
                                         for j in hatext['pulse_info']['pulses'][i]['tags']:
                                             b = b + 1
@@ -563,33 +571,33 @@ class AlienVaultExtractor():
                                                 print(mycolors.reset + j, end='\n')
                                 if 'malware_families' in hatext['pulse_info']['pulses'][i]:
                                     if hatext['pulse_info']['pulses'][i]['malware_families']:
-                                        print(mycolors.foreground.cyan + "\nMalware:".ljust(13) + mycolors.reset, end='')
+                                        print(mycolors.foreground.blue + "\nMalware:".ljust(13) + mycolors.reset, end='')
                                         for z in hatext['pulse_info']['pulses'][i]['malware_families']:
                                             print(mycolors.reset + z['display_name'], end=' ')
                                 if 'created' in hatext['pulse_info']['pulses'][i]:
                                     if hatext['pulse_info']['pulses'][i]['created']:
-                                        print(mycolors.foreground.cyan + "\nCreated:".ljust(13) + mycolors.reset, end='')
+                                        print(mycolors.foreground.blue + "\nCreated:".ljust(13) + mycolors.reset, end='')
                                         print(mycolors.reset + hatext['pulse_info']['pulses'][i]['created'], end=' ')
                                 if 'modified' in hatext['pulse_info']['pulses'][i]:
                                     if hatext['pulse_info']['pulses'][i]['modified']:
-                                        print(mycolors.foreground.cyan + "\nModified:".ljust(13) + mycolors.reset, end='')
+                                        print(mycolors.foreground.blue + "\nModified:".ljust(13) + mycolors.reset, end='')
                                         print(mycolors.reset + hatext['pulse_info']['pulses'][i]['modified'], end=' ')
                                 if 'targeted_countries' in hatext['pulse_info']['pulses'][i]:
                                     if hatext['pulse_info']['pulses'][i]['targeted_countries']:
-                                        print(mycolors.foreground.cyan + "\nCountries:".ljust(13), end='')
+                                        print(mycolors.foreground.blue + "\nCountries:".ljust(13), end='')
                                         for z in hatext['pulse_info']['pulses'][i]['targeted_countries']:
                                             print(mycolors.reset + z, end=' ')
                                 if 'attack_ids' in hatext['pulse_info']['pulses'][i]:
                                     if hatext['pulse_info']['pulses'][i]['attack_ids']:
                                         for k in hatext['pulse_info']['pulses'][i]['attack_ids']:
-                                            print(mycolors.foreground.cyan + "\nAttack IDs:".ljust(13) + mycolors.reset + str(k['display_name']), end='')
+                                            print(mycolors.foreground.blue + "\nAttack IDs:".ljust(13) + mycolors.reset + str(k['display_name']), end='')
                                 if 'name' in hatext['pulse_info']['pulses'][i]:
                                     if hatext['pulse_info']['pulses'][i]['name']:
-                                        print(mycolors.foreground.cyan + "\nNews:".ljust(13) + mycolors.reset + hatext['pulse_info']['pulses'][i]['name'], end='')
+                                        print(mycolors.foreground.blue + "\nNews:".ljust(13) + mycolors.reset + hatext['pulse_info']['pulses'][i]['name'], end='')
                                     break
                                 i = i + 1
 
-                        print(mycolors.foreground.cyan + "\nDescription:", end='')
+                        print(mycolors.foreground.blue + "\nDescription:", end='')
                         for x in hatext['pulse_info']['pulses']:
                             if (isinstance(x, dict)):
                                 for y in x:
@@ -600,11 +608,11 @@ class AlienVaultExtractor():
 
                         if "references" in (hatext['pulse_info']):
                             for j in hatext['pulse_info']['references']:
-                                print(mycolors.foreground.cyan + "\nReferences: ".ljust(13) + mycolors.reset + ("\n".ljust(13)).join(textwrap.wrap(j, width=100)), end='')
+                                print(mycolors.foreground.blue + "\nReferences: ".ljust(13) + mycolors.reset + ("\n".ljust(13)).join(textwrap.wrap(j, width=100)), end='')
                         print("\n")
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'AlienVault OTX'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Alien Vault!\n"))
             else:
@@ -630,7 +638,8 @@ class AlienVaultExtractor():
             requestsession.headers.update({'Content-Type': 'application/json'})
             finalurl = '/'.join([resource, 'indicators', 'url', quote(myargs, safe=''), 'general'])
             haresponse = requestsession.post(url=finalurl, headers=headers, params=search_params)
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('alienvault', 'alien_url', hatext)
 
             if (cv.bkg == 1):
                 if 'indicator' in hatext:
@@ -640,7 +649,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.lightred + "\nURL not found!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         if 'pulses' in (hatext['pulse_info']):
                             if 'name' in hatext['pulse_info']['pulses'][i]:
                                 if hatext['pulse_info']['pulses'][i]['name']:
@@ -715,7 +724,7 @@ class AlienVaultExtractor():
                         if 'count' in (hatext['pulse_info']):
                             if ((hatext['pulse_info']['count']) == 0):
                                 print(mycolors.foreground.red + "\nURL not found!\n" + mycolors.reset)
-                                exit(0)
+                                return True
                         if 'pulses' in (hatext['pulse_info']):
                             if 'name' in hatext['pulse_info']['pulses'][i]:
                                 if hatext['pulse_info']['pulses'][i]['name']:
@@ -782,8 +791,8 @@ class AlienVaultExtractor():
                     if hatext['alexa']:
                         print(mycolors.foreground.red + "\nAlexa:".ljust(13) + mycolors.reset + hatext['alexa'], end='')
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'AlienVault OTX'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Alien Vault!\n"))
             else:
@@ -799,7 +808,7 @@ class AlienVaultExtractor():
             requestsession.headers.update({'Content-Type': 'application/json'})
             finalurl = '/'.join([url, 'indicators', 'file', quote(hash_value, safe='')])
             response = requestsession.post(url=finalurl, headers=headers, params={'limit': '10'})
-            data = json.loads(response.text)
+            data = strip_json_escapes(json.loads(response.text))
             if 'indicator' in data:
                 return data
         except Exception:

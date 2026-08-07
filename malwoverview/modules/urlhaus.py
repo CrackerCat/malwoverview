@@ -3,13 +3,45 @@ import requests
 import textwrap
 from colorama import Fore
 import validators
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, bullet, report_header, divider, display_width
 from malwoverview.utils.utils import urltoip
 import json
 import sys
 import os
-from malwoverview.utils.session import create_session
+from malwoverview.utils.output import collector, add_records
+from malwoverview.utils.session import create_session, failure_message
 from malwoverview.utils.cache import cached
+
+REPORT_WIDTH = 126
+
+SIG_URL_INDENT = 98
+SIG_URL_WRAP = 35
+SIG_REPORT_WIDTH = SIG_URL_INDENT + SIG_URL_WRAP
+
+TAG_URL_INDENT = 51
+TAG_URL_WRAP = 80
+TAG_REPORT_WIDTH = TAG_URL_INDENT + TAG_URL_WRAP
+
+BATCH_URL_INDENT = 54
+BATCH_URL_WRAP = 75
+BATCH_REPORT_WIDTH = BATCH_URL_INDENT + BATCH_URL_WRAP
+
+PAYLOAD_REPORT_WIDTH = 136
+
+HASH_COL_STATUS = 8
+HASH_COL_FILENAME = 37
+HASH_COL_LOCATION = 21
+
+BATCH_STATUS_LABELS = {
+    'ok': 'found',
+    'no_results': 'not found',
+    'invalid_md5': 'invalid hash',
+    'invalid_sha256': 'invalid hash',
+    'http_post_expected': 'bad request',
+}
+
+BATCH_COL_GUTTER = 2
+BATCH_COL_SIGNATURE = 24
 
 class URLHausExtractor():
     hauss = 'https://urlhaus.abuse.ch/api/'
@@ -39,16 +71,15 @@ class URLHausExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + "URLHaus Report".center(126)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (126 * '-').center(59))
+            print(report_header("URLHaus Report", SIG_REPORT_WIDTH))
 
             requestsession9 = create_session()
             requestsession9.headers.update({'accept': 'application/json'})
             requestsession9.headers.update({'Auth-Key': self.URLHAUSAPI})
             params = {"signature": payloadtagx}
             hausresponse = requestsession9.post(haus, data=params)
-            haustext = json.loads(hausresponse.text)
+            haustext = strip_json_escapes(json.loads(hausresponse.text))
+            add_records('urlhaus', 'haussigsearchroutine', haustext)
 
             if 'query_status' in haustext:
                 if (cv.bkg == 1):
@@ -66,24 +97,24 @@ class URLHausExtractor():
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + "First Seen: \t" + haustext.get('firstseen'))
                     else:
-                        print(mycolors.foreground.cyan + "First Seen: \t" + haustext.get('firstseen'))
+                        print(mycolors.foreground.blue + "First Seen: \t" + haustext.get('firstseen'))
                 else:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + 'First Seen: ')
                     else:
-                        print(mycolors.foreground.cyan + 'First Seen: ')
+                        print(mycolors.foreground.blue + 'First Seen: ')
 
             if 'lastseen' in haustext:
                 if haustext.get('lastseen') is not None:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + "Last Seen: \t" + haustext.get('lastseen'))
                     else:
-                        print(mycolors.foreground.cyan + "Last Seen: \t" + haustext.get('lastseen'))
+                        print(mycolors.foreground.blue + "Last Seen: \t" + haustext.get('lastseen'))
                 else:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + 'Last Seen: ')
                     else:
-                        print(mycolors.foreground.cyan + 'Last Seen: ')
+                        print(mycolors.foreground.blue + 'Last Seen: ')
 
             if 'url_count' in haustext:
                 if haustext.get('url_count') is not None:
@@ -116,8 +147,8 @@ class URLHausExtractor():
 
             if 'urls' in haustext:
                 if ('url_id' in haustext['urls']) is not None:
-                    print(mycolors.reset + "\nStatus".center(9) + " " * 2 + "FType".ljust(7) + " SHA256 Hash".center(64) + " " * 4 + "Virus Total".ljust(14) + ' ' * 2 + "URL to Payload".center(34))
-                    print("-" * 140 + "\n")
+                    print(mycolors.foreground.neutral(cv.bkg) + "\nStatus".center(9) + " " * 2 + "FType".ljust(7) + " SHA256 Hash".center(64) + " " * 4 + "Virus Total".ljust(14) + ' ' * 2 + "URL to Payload".center(34) + mycolors.reset)
+                    print(divider(SIG_REPORT_WIDTH) + "\n")
                     for w in haustext['urls']:
                         if (cv.bkg == 1):
                             if (w['url_status'] == 'online'):
@@ -155,9 +186,9 @@ class URLHausExtractor():
                             if w['sha256_hash']:
                                 print(mycolors.foreground.red + w['sha256_hash'] + mycolors.reset, end=' ')
                             if w['virustotal']:
-                                print(mycolors.foreground.cyan + ' ' * 2 + "%-9s" % w['virustotal'].get('result') + mycolors.reset, end=' ')
+                                print(mycolors.foreground.blue + ' ' * 2 + "%-9s" % w['virustotal'].get('result') + mycolors.reset, end=' ')
                             else:
-                                print(mycolors.foreground.cyan + ' ' * 2 + "%-9s" % "Not Found" + mycolors.reset, end=' ')
+                                print(mycolors.foreground.blue + ' ' * 2 + "%-9s" % "Not Found" + mycolors.reset, end=' ')
                             if (w['url']):
                                 print(mycolors.foreground.green + (("\n" + " ".ljust(98)).join(textwrap.wrap(w['url'], width=35))), end="\n")
                             else:
@@ -165,12 +196,17 @@ class URLHausExtractor():
 
             printr()
 
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             print(mycolors.reset, file=sys.stderr)
             exit(1)
 
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -188,16 +224,15 @@ class URLHausExtractor():
         try:
 
             print("\n")
-            print((mycolors.reset + "URLHaus Report".center(126)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (130 * '-').center(59))
+            print(report_header("URLHaus Report", TAG_REPORT_WIDTH))
 
             params = {"tag": haustag}
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
             requestsession.headers.update({'Auth-Key': self.URLHAUSAPI})
             hausresponse = requestsession.post(hausurltag, data=params)
-            haustext = json.loads(hausresponse.text)
+            haustext = strip_json_escapes(json.loads(hausresponse.text))
+            add_records('urlhaus', 'haustagsearchroutine', haustext)
 
             if 'query_status' in haustext:
                 if (cv.bkg == 1):
@@ -215,24 +250,24 @@ class URLHausExtractor():
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + "First Seen: \t" + haustext.get('firstseen'))
                     else:
-                        print(mycolors.foreground.cyan + "First Seen: \t" + haustext.get('firstseen'))
+                        print(mycolors.foreground.blue + "First Seen: \t" + haustext.get('firstseen'))
                 else:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + 'First Seen: ')
                     else:
-                        print(mycolors.foreground.cyan + 'First Seen: ')
+                        print(mycolors.foreground.blue + 'First Seen: ')
 
             if 'lastseen' in haustext:
                 if haustext.get('lastseen') is not None:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + "Last Seen: \t" + haustext.get('lastseen'))
                     else:
-                        print(mycolors.foreground.cyan + "Last Seen: \t" + haustext.get('lastseen'))
+                        print(mycolors.foreground.blue + "Last Seen: \t" + haustext.get('lastseen'))
                 else:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + 'Last Seen: ')
                     else:
-                        print(mycolors.foreground.cyan + 'Last Seen: ')
+                        print(mycolors.foreground.blue + 'Last Seen: ')
 
             if 'url_count' in haustext:
                 if haustext.get('url_count') is not None:
@@ -253,8 +288,8 @@ class URLHausExtractor():
 
             if 'urls' in haustext:
                 if ('url_id' in haustext['urls']) is not None:
-                    print(mycolors.reset + "\nStatus".center(9) + " " * 6 + " " * 2 + "Date Added".ljust(22) + " Threat".ljust(17) + " " * 28 + "Associated URL".ljust(80))
-                    print("-" * 130 + "\n")
+                    print(mycolors.foreground.neutral(cv.bkg) + "\nStatus".center(9) + " " * 6 + " " * 2 + "Date Added".ljust(22) + " Threat".ljust(17) + " " * 28 + "Associated URL".ljust(80) + mycolors.reset)
+                    print(divider(TAG_REPORT_WIDTH) + "\n")
 
                     for w in haustext['urls']:
                         if (cv.bkg == 1):
@@ -284,7 +319,7 @@ class URLHausExtractor():
                             if (w['url_status'] == 'offline'):
                                 print(mycolors.foreground.red + mycolors.reverse + w['url_status'] + mycolors.reset, end=' ')
                             if (w['url_status'] == ''):
-                                print(mycolors.foreground.cyan + mycolors.reverse + "unknown" + mycolors.reset, end=' ')
+                                print(mycolors.foreground.blue + mycolors.reverse + "unknown" + mycolors.reset, end=' ')
                             if (w['url']):
                                 if (w['dateadded']):
                                     print(mycolors.foreground.purple + " " * 2 + (w['dateadded']).ljust(22) + mycolors.reset, end=' ')
@@ -301,12 +336,17 @@ class URLHausExtractor():
 
             printr()
 
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             print(mycolors.reset, file=sys.stderr)
             exit(1)
 
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -362,18 +402,24 @@ class URLHausExtractor():
             outputpath = os.path.join(cv.output_dir, safe_filename)
             with open(outputpath, 'wb') as f:
                 f.write(content)
+                collector.add({'service': 'urlhaus', 'query_type': 'haussample', 'query': hashx, 'file': outputpath, 'size': os.path.getsize(outputpath)})
             final = f'\nSample downloaded to: {outputpath}'
 
             if (cv.bkg == 1):
                 print((mycolors.foreground.yellow + final + "\n"))
             else:
                 print((mycolors.foreground.green + final + "\n"))
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             print(mycolors.reset, file=sys.stderr)
             exit(1)
 
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -381,7 +427,7 @@ class URLHausExtractor():
             printr()
 
         printr()
-        exit(0)
+        return True
 
     def hausgetbatch(self):
         haus = URLHausExtractor.hausb
@@ -395,15 +441,14 @@ class URLHausExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "URLhaus Recent Malicious URLs".center(104)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (126 * '-').center(59))
+            print(report_header("URLhaus Recent Malicious URLs", BATCH_REPORT_WIDTH))
 
             requestsession7 = create_session()
             requestsession7.headers.update({'accept': 'application/json'})
             requestsession7.headers.update({'Auth-Key': self.URLHAUSAPI})
             hausresponse = requestsession7.get(haus)
-            haustext = json.loads(hausresponse.text)
+            haustext = strip_json_escapes(json.loads(hausresponse.text))
+            add_records('urlhaus', 'hausgetbatch', haustext)
             nurl = len(haustext['urls'])
 
             if (nurl > 0):
@@ -435,7 +480,7 @@ class URLHausExtractor():
                                 if (haustext['urls'][i].get('url_status') == 'offline'):
                                     print(mycolors.foreground.red + haustext['urls'][i].get('url_status') + mycolors.reset, end=' ')
                                 if (haustext['urls'][i].get('url_status') == ''):
-                                    print(mycolors.foreground.cyan + "unknown" + mycolors.reset, end=' ')
+                                    print(mycolors.foreground.blue + "unknown" + mycolors.reset, end=' ')
                                 if 'tags' in haustext['urls'][i]:
                                     print(mycolors.foreground.blue, end='')
                                     if haustext['urls'][i].get('tags') is not None:
@@ -460,11 +505,16 @@ class URLHausExtractor():
             printr()
         except KeyError:
             pass
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             printr()
             exit(1)
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -481,15 +531,14 @@ class URLHausExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "Haus Downloadable Links to Recent Payloads".center(146)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (136 * '-').center(59))
+            print(report_header("Haus Downloadable Links to Recent Payloads", PAYLOAD_REPORT_WIDTH))
 
             requestsession8 = create_session()
             requestsession8.headers.update({'accept': 'application/json'})
             requestsession8.headers.update({'Auth-Key': self.URLHAUSAPI})
             hausresponse = requestsession8.get(haus)
-            haustext = json.loads(hausresponse.text)
+            haustext = strip_json_escapes(json.loads(hausresponse.text))
+            add_records('urlhaus', 'hauspayloadslist', haustext)
             npayloads = len(haustext['payloads'])
 
             if (npayloads > 0):
@@ -518,12 +567,17 @@ class URLHausExtractor():
         except KeyError:
             pass
 
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             print(mycolors.reset, file=sys.stderr)
             exit(1)
 
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -550,16 +604,15 @@ class URLHausExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "URLhaus Report".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (126 * '-').center(59))
+            print(report_header("URLhaus Report", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
             requestsession.headers.update({'Auth-Key': self.URLHAUSAPI})
             params = {"url": urlx}
             hausresponse = requestsession.post(haus, data=params)
-            haustext = json.loads(hausresponse.text)
+            haustext = strip_json_escapes(json.loads(hausresponse.text))
+            add_records('urlhaus', 'urlhauscheck', haustext)
 
             if (haustext.get('id') is None):
                 if (cv.bkg == 1):
@@ -610,7 +663,7 @@ class URLHausExtractor():
                     if (haustext.get('url_status') == 'offline'):
                         print(mycolors.foreground.red + "Status: \t" + mycolors.reverse + haustext.get('url_status') + mycolors.reset)
                     if (haustext.get('url_status') == ''):
-                        print(mycolors.foreground.cyan + "Status: \t" + mycolors.reverse + "unknown" + mycolors.reset)
+                        print(mycolors.foreground.blue + "Status: \t" + mycolors.reverse + "unknown" + mycolors.reset)
             else:
                 if (cv.bkg == 1):
                     print(mycolors.foreground.lightred + 'Status: ')
@@ -773,7 +826,7 @@ class URLHausExtractor():
                                 print(mycolors.foreground.blue + "VirusTotal: Not Found" + Fore.BLACK)
 
                     print(mycolors.reset + "\nSample Hashes")
-                    print(13 * '-' + "\n")
+                    print(divider(len("Sample Hashes")) + "\n")
 
                     for j in allpayloads:
                         z = z + 1
@@ -786,11 +839,16 @@ class URLHausExtractor():
 
             printr()
 
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             print(mycolors.reset, file=sys.stderr)
             exit(1)
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -811,9 +869,7 @@ class URLHausExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "URLHaus Report".center(126)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (126 * '-').center(59))
+            print(report_header("URLHaus Report", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
@@ -822,11 +878,13 @@ class URLHausExtractor():
             if ((len(hashx) == 32)):
                 params = {"md5_hash": hashx}
                 hausresponse = requestsession.post(haus, data=params)
-                haustext = json.loads(hausresponse.text)
+                haustext = strip_json_escapes(json.loads(hausresponse.text))
+                add_records('urlhaus', 'haushashsearch', haustext)
             elif ((len(hashx) == 64)):
                 params = {"sha256_hash": hashx}
                 hausresponse = requestsession.post(haus, data=params)
-                haustext = json.loads(hausresponse.text)
+                haustext = strip_json_escapes(json.loads(hausresponse.text))
+                add_records('urlhaus', 'haushashsearch', haustext)
 
             if ((haustext.get("md5_hash") is None) and (haustext.get("sha256_hash") is None)):
                 if (cv.bkg == 1):
@@ -899,24 +957,24 @@ class URLHausExtractor():
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + "First Seen: \t" + haustext.get('firstseen'))
                     else:
-                        print(mycolors.foreground.cyan + "First Seen: \t" + haustext.get('firstseen'))
+                        print(mycolors.foreground.blue + "First Seen: \t" + haustext.get('firstseen'))
                 else:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + 'First Seen: ')
                     else:
-                        print(mycolors.foreground.cyan + 'First Seen: ')
+                        print(mycolors.foreground.blue + 'First Seen: ')
 
             if 'lastseen' in haustext:
                 if haustext.get('lastseen') is not None:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + "Last Seen: \t" + haustext.get('lastseen'))
                     else:
-                        print(mycolors.foreground.cyan + "Last Seen: \t" + haustext.get('lastseen'))
+                        print(mycolors.foreground.blue + "Last Seen: \t" + haustext.get('lastseen'))
                 else:
                     if (cv.bkg == 1):
                         print(mycolors.foreground.lightcyan + 'Last Seen: ')
                     else:
-                        print(mycolors.foreground.cyan + 'Last Seen: ')
+                        print(mycolors.foreground.blue + 'Last Seen: ')
 
             if 'urlhaus_download' in haustext:
                 if haustext.get('urlhaus_download') is not None:
@@ -944,13 +1002,15 @@ class URLHausExtractor():
 
             if 'urls' in haustext:
                 if (haustext.get('urls')) is not None:
-                    if (cv.bkg == 1):
-                        print(mycolors.reset + "\nStatus".center(9) + " Filename".ljust(36) + "  Location".ljust(23) + "Associated URL".ljust(20))
-                        print("-" * 126 + "\n")
-                    else:
-                        print(mycolors.reset + "\nStatus".center(9) + " Filename".ljust(36) + "  Location".ljust(23) + "Associated URL".ljust(20))
-                        print("-" * 126 + "\n")
                     allurls = haustext.get('urls')
+                    urlwidth = max([len("Associated URL")]
+                                   + [len(str(w.get('url') or '')) for w in allurls])
+                    header = ("Status".center(HASH_COL_STATUS)
+                              + "Filename".ljust(HASH_COL_FILENAME)
+                              + "Location".ljust(HASH_COL_LOCATION)
+                              + "Associated URL".ljust(urlwidth))
+                    print("\n" + mycolors.foreground.neutral(cv.bkg) + header + mycolors.reset)
+                    print(divider(display_width(header)) + "\n")
                     for w in allurls:
                         if (cv.bkg == 1):
                             if (w['url_status'] == 'online'):
@@ -979,7 +1039,7 @@ class URLHausExtractor():
                             if (w['url_status'] == 'offline'):
                                 print(mycolors.foreground.red + mycolors.reverse + w['url_status'] + mycolors.reset, end=' ')
                             if (w['url_status'] == ''):
-                                print(mycolors.foreground.cyan + mycolors.reverse + "unknown" + mycolors.reset, end=' ')
+                                print(mycolors.foreground.blue + mycolors.reverse + "unknown" + mycolors.reset, end=' ')
                             if w['filename'] is not None:
                                 print(mycolors.foreground.pink + "%-36s" % w['filename'] + mycolors.reset, end=' ')
                             else:
@@ -991,17 +1051,22 @@ class URLHausExtractor():
                                     print(mycolors.foreground.green + "Not located".center(20) + mycolors.reset, end=' ')
                                 print(mycolors.foreground.blue + w['url'] + mycolors.reset)
                             else:
-                                print(mycolors.foreground.lightcyan + "Not located".center(20) + mycolors.reset, end=' ')
-                                print(mycolors.foreground.lightcyan + "URL not provided".center(20) + mycolors.reset, end=' ')
+                                print(mycolors.foreground.blue + "Not located".center(20) + mycolors.reset, end=' ')
+                                print(mycolors.foreground.blue + "URL not provided".center(20) + mycolors.reset, end=' ')
 
             printr()
 
+        except requests.exceptions.RequestException as e:
+            print(mycolors.foreground.error(cv.bkg)
+                  + failure_message(e, 'URLhaus') + mycolors.reset)
+            printr()
+            return False
         except (BrokenPipeError, IOError, TypeError):
             print(mycolors.reset, file=sys.stderr)
             exit(1)
 
         except ValueError as e:
-            print(e)
+            print(failure_message(e, 'URLhaus'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to URLhaus!\n"))
             else:
@@ -1032,20 +1097,29 @@ class URLHausExtractor():
             printr()
             return
 
-        print("\n")
-        print((mycolors.reset + "URLHaus Batch Hash Check".center(126)), end='')
-        print((mycolors.reset + "".center(28)), end='')
-        print("\n" + (126 * '-').center(50))
+        hashcol = max([len("Hash")] + [len(x) for x in hashes]) + BATCH_COL_GUTTER
+        statuscol = max([len("Status")] + [len(x) for x in BATCH_STATUS_LABELS.values()]) + BATCH_COL_GUTTER
+        total = hashcol + statuscol + max(len("Signature"), BATCH_COL_SIGNATURE)
 
-        if (cv.bkg == 1):
-            print(mycolors.foreground.lightcyan + "\n%-68s %-14s %s" % ("Hash", "Status", "Signature"))
-            print((100 * '-'))
-        else:
-            print(mycolors.foreground.red + "\n%-68s %-14s %s" % ("Hash", "Status", "Signature"))
-            print((100 * '-'))
+        structure = mycolors.foreground.neutral(cv.bkg)
+        hashcolor = mycolors.foreground.pink if cv.bkg == 1 else mycolors.foreground.blue
+        foundcolor = mycolors.foreground.yellow if cv.bkg == 1 else mycolors.foreground.purple
+        plaincolor = mycolors.foreground.lightgrey if cv.bkg == 1 else mycolors.foreground.darkgrey
+        errorcolor = mycolors.foreground.lightred if cv.bkg == 1 else mycolors.foreground.red
+
+        print("\n")
+        print(mycolors.reset + "URLHaus Batch Hash Check".center(total))
+        print(structure + (total * '-'))
+        print("")
+        print(structure + "Hash".ljust(hashcol) + "Status".ljust(statuscol) + "Signature")
+        print(structure + (total * '-') + mycolors.reset)
 
         requestsession = create_session()
         requestsession.headers.update({'Auth-Key': self.URLHAUSAPI})
+
+        found = 0
+        missing = 0
+        rejected = 0
 
         for h in hashes:
             try:
@@ -1055,27 +1129,47 @@ class URLHausExtractor():
                     params = {'sha256_hash': h}
 
                 response = requestsession.post(haus, data=params, timeout=60)
-                haustext = json.loads(response.text)
+                haustext = strip_json_escapes(json.loads(response.text))
+                add_records('urlhaus', 'hausbatchcheck', haustext)
 
                 status = haustext.get('query_status', 'unknown')
+                label = BATCH_STATUS_LABELS.get(status, status)
                 signature = ''
-                if status == 'ok':
-                    signature = str(haustext.get('signature', '')) if haustext.get('signature') else ''
 
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.yellow + "%-68s " % h, end='')
-                    print(mycolors.foreground.lightcyan + "%-14s " % status, end='')
-                    print(mycolors.foreground.lightred + "%s" % signature)
+                if status == 'ok':
+                    found = found + 1
+                    statuscolor = foundcolor
+                    if haustext.get('signature'):
+                        signature = str(haustext.get('signature'))
+                        sigcolor = errorcolor
+                    else:
+                        signature = 'n/a'
+                        sigcolor = plaincolor
+                elif status == 'no_results':
+                    missing = missing + 1
+                    statuscolor = plaincolor
+                    sigcolor = plaincolor
                 else:
-                    print(mycolors.foreground.cyan + "%-68s " % h, end='')
-                    print(mycolors.foreground.blue + "%-14s " % status, end='')
-                    print(mycolors.foreground.red + "%s" % signature)
+                    rejected = rejected + 1
+                    statuscolor = errorcolor
+                    sigcolor = plaincolor
+
+                print(hashcolor + h.ljust(hashcol) + statuscolor + label.ljust(statuscol) + sigcolor + signature + mycolors.reset)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-68s error: %s" % (h, str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-68s error: %s" % (h, str(e)))
+                rejected = rejected + 1
+                print(errorcolor + h.ljust(hashcol) + "error: %s" % str(e) + mycolors.reset)
+
+        counts = "%d hash(es) checked: %d found, %d not found" % (len(hashes), found, missing)
+        if rejected:
+            counts = counts + ", %d not checked" % rejected
+
+        print("")
+        print(bullet(counts + ".", total))
+        if found:
+            print(bullet("found means URLHaus has seen this file being served by at least one malware URL, and the Signature column names the malware family whenever URLHaus tracks one.", total))
+        if missing:
+            print(bullet("not found only means the file is unknown to URLHaus. It is not a verdict that the file is clean.", total))
 
         printr()
 
@@ -1090,7 +1184,7 @@ class URLHausExtractor():
                 params = {'sha256_hash': hash_value}
             response = requestsession.post(haus + 'payload/', data=params, timeout=60)
             if response.status_code == 200:
-                data = response.json()
+                data = strip_json_escapes(response.json())
                 if data.get('query_status') == 'ok':
                     return data
         except Exception:

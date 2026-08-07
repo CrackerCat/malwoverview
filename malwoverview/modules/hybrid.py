@@ -2,17 +2,65 @@ import malwoverview.modules.configvars as cv
 import requests
 from colorama import Fore
 import geocoder
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, bullet, display_width, pad, divider
 from malwoverview.utils.hash import sha256hash
 import json
 import os
 from urllib.parse import quote
-from malwoverview.utils.session import create_session
+from malwoverview.utils.output import collector, add_records
+from malwoverview.utils.session import create_session, failure_message
 from malwoverview.utils.cache import cached
+from malwoverview.utils.attack import map_and_display
+
+SUMMARY_WIDTH = 70
+
+HA_VERDICTS = ('malicious', 'suspicious', 'no specific threat', 'whitelisted', 'unknown')
+HA_NOT_FOUND = 'not found'
+HA_EMPTY = 'n/a'
+
+BATCH_COL_GUTTER = 2
+BATCH_COL_SCORE = len("Threat Score")
+BATCH_COL_AVDETECT = len("AV Detect (%)")
+
+
+def _verdict_color(verdict):
+    if verdict == 'malicious':
+        return mycolors.foreground.error(cv.bkg)
+    if verdict == 'suspicious':
+        return mycolors.foreground.warning(cv.bkg)
+    if verdict in ('no specific threat', 'whitelisted'):
+        return mycolors.foreground.success(cv.bkg)
+    return mycolors.foreground.neutral(cv.bkg)
+
+
+def _verdict_width():
+    return max([len("Verdict"), len(HA_NOT_FOUND)] + [len(v) for v in HA_VERDICTS]) + BATCH_COL_GUTTER
+
+
+def _summarize(response, hatext):
+    if response.status_code == 404:
+        return HA_NOT_FOUND, '', ''
+
+    if response.status_code != 200 or not isinstance(hatext, dict):
+        return 'HTTP %d' % response.status_code, '', ''
+
+    if hatext.get('message'):
+        return HA_NOT_FOUND, '', ''
+
+    verdict = str(hatext.get('verdict')) if hatext.get('verdict') else 'unknown'
+    score = str(hatext.get('threat_score')) if hatext.get('threat_score') is not None else ''
+
+    detect = ''
+    if hatext.get('multiscan_result') is not None:
+        detect = str(hatext.get('multiscan_result'))
+    elif hatext.get('av_detect') is not None:
+        detect = str(hatext.get('av_detect'))
+
+    return verdict, score, detect
 
 
 class HybridAnalysisExtractor():
-    haurl = 'https://www.hybrid-analysis.com/api/v2'
+    haurl = 'https://hybrid-analysis.com/api/v2'
 
     def __init__(self, HAAPI):
         self.HAAPI = HAAPI
@@ -70,22 +118,23 @@ class HybridAnalysisExtractor():
                 outputpath = os.path.join(cv.output_dir, safe_filename)
                 with open(outputpath, 'wb') as f:
                     f.write(content)
+                    collector.add({'service': 'hybrid_analysis', 'query_type': 'downhash', 'query': filehash, 'file': outputpath, 'size': os.path.getsize(outputpath)})
                 final = f'Sample downloaded to: {outputpath}'
 
                 print((mycolors.reset))
                 print((final + "\n"))
                 return final
 
-            except ValueError as e:
-                print(e)
+            except (ValueError, requests.exceptions.RequestException) as e:
+                print(failure_message(e, 'Hybrid Analysis'))
                 if (cv.bkg == 1):
                     print((mycolors.foreground.lightred + "Error while downloading Hybrid-Analysis!\n"))
                 else:
                     print((mycolors.foreground.red + "Error while downloading Hybrid-Analysis!\n"))
                 printr()
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Hybrid Analysis'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Hybrid-Analysis!\n"))
             else:
@@ -120,7 +169,8 @@ class HybridAnalysisExtractor():
                 finalurl = '/'.join([haurl, 'report', quote(resource, safe='') + ':300', 'summary'])
 
             haresponse = requestsession.get(url=finalurl)
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('hybrid_analysis', 'hashow', hatext)
 
             rc = str(hatext)
             if 'Failed' in rc:
@@ -233,7 +283,7 @@ class HybridAnalysisExtractor():
 
             printr()
             print("\nHybrid-Analysis Summary Report:")
-            print((70 * '-').ljust(70))
+            print(divider(SUMMARY_WIDTH))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightcyan))
             else:
@@ -248,7 +298,7 @@ class HybridAnalysisExtractor():
             if (cv.bkg == 1):
                 print((mycolors.foreground.yellow))
             else:
-                print((mycolors.foreground.cyan))
+                print((mycolors.foreground.blue))
             print("Submit Name:".ljust(20), submitname)
             print("Analysis Time:".ljust(20), analysistime)
             print("File Size:".ljust(20), malsize)
@@ -270,7 +320,7 @@ class HybridAnalysisExtractor():
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred))
             else:
-                print((mycolors.foreground.cyan))
+                print((mycolors.foreground.blue))
 
             print("Vx Family:".ljust(20), vxfamily)
             print("File Type Short:    ", end=' ')
@@ -313,14 +363,19 @@ class HybridAnalysisExtractor():
                 print("".ljust(20), end=' ')
                 print(("attck_id_wiki: %s\n" % i['attck_id_wiki']))
 
+            map_and_display(
+                [i.get('attck_id', '') for i in mitre if isinstance(i, dict)],
+                label='Hybrid Analysis'
+            )
+
             rc = (hatext)
             if (rc == 0):
                 final = 'Not Found'
             printr()
             return final
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Hybrid Analysis'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Hybrid-Analysis!\n"))
             else:
@@ -381,7 +436,18 @@ class HybridAnalysisExtractor():
                 resource = {'file': (os.path.basename(filenameha), file_handle), 'environment_id': (None, haenv)}
                 haresponse = requestsession.post(url=finalurl, files=resource)
 
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('hybrid_analysis', 'hafilecheck', hatext)
+
+            if not isinstance(hatext, dict) or 'job_id' not in hatext:
+                reason = ''
+                if isinstance(hatext, dict):
+                    reason = str(hatext.get('message') or hatext.get('error') or hatext.get('errors') or '')
+                if not reason:
+                    reason = haresponse.text[:200]
+                print(mycolors.foreground.error(cv.bkg) + "\nHybrid Analysis did not accept the submission (HTTP %d): %s\n" % (haresponse.status_code, reason) + mycolors.reset)
+                printr()
+                return False
 
             rc = str(hatext)
 
@@ -415,8 +481,8 @@ class HybridAnalysisExtractor():
                 else:
                     print((mycolors.foreground.red + "\nAn error occured while sending the file!"))
                     print((mycolors.reset + "\n"))
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Hybrid Analysis'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Hybrid-Analysis!\n"))
             else:
@@ -458,7 +524,8 @@ class HybridAnalysisExtractor():
                 finalurl = '/'.join([haurl, 'report', quote(resource, safe='') + ':300', 'summary'])
 
             haresponse = requestsession.get(url=finalurl)
-            hatext = json.loads(haresponse.text)
+            hatext = strip_json_escapes(json.loads(haresponse.text))
+            add_records('hybrid_analysis', 'quickhashow', hatext)
 
             rc = str(hatext)
             if 'message' in rc:
@@ -502,8 +569,8 @@ class HybridAnalysisExtractor():
 
             return (final, verdict, avdetect, totalsignatures, threatscore, totalprocesses, networkconnections)
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Hybrid Analysis'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Hybrid-Analysis!\n"))
             else:
@@ -511,7 +578,7 @@ class HybridAnalysisExtractor():
             printr()
 
     def habatchcheck(self, filename, user_agent='Falcon Sandbox'):
-        haurl = 'https://www.hybrid-analysis.com/api/v2'
+        haurl = 'https://hybrid-analysis.com/api/v2'
 
         self.requestHAAPI()
 
@@ -534,61 +601,77 @@ class HybridAnalysisExtractor():
             printr()
             return
 
-        print("\n")
-        print((mycolors.reset + "Hybrid Analysis Batch Hash Check".center(100)), end='')
-        print((mycolors.reset + "".center(28)), end='')
-        print("\n" + (100 * '-').center(50))
+        hashcol = max([len("Hash")] + [len(x) for x in hashes]) + BATCH_COL_GUTTER
+        verdictcol = _verdict_width()
+        scorecol = BATCH_COL_SCORE + BATCH_COL_GUTTER
+        avcol = BATCH_COL_AVDETECT + BATCH_COL_GUTTER
+        total = hashcol + verdictcol + scorecol + avcol
 
-        print(mycolors.reset + "\n%-68s %-22s %-14s %s" % ("Hash", "Verdict", "Threat Score", "AV Detect (%)"))
-        print((120 * '-'))
+        structure = mycolors.foreground.neutral(cv.bkg)
+        hashcolor = mycolors.foreground.yellow if cv.bkg == 1 else mycolors.foreground.blue
+        errorcolor = mycolors.foreground.error(cv.bkg)
+
+        print("\n")
+        print(mycolors.reset + "Hybrid Analysis Batch Hash Check".center(total))
+        print(structure + (total * '-'))
+        print("")
+        print(structure + "Hash".ljust(hashcol) + "Verdict".ljust(verdictcol)
+              + "Threat Score".ljust(scorecol) + "AV Detect (%)")
+        print(structure + (total * '-') + mycolors.reset)
 
         requestsession = create_session()
         requestsession.headers.update({'user-agent': user_agent})
         requestsession.headers.update({'api-key': self.HAAPI})
         requestsession.headers.update({'accept': 'application/json'})
 
+        known = 0
+        missing = 0
+        rejected = 0
+
         for h in hashes:
             try:
                 h = h.strip()
                 finalurl = '/'.join([haurl, 'overview', quote(h, safe=''), 'summary'])
                 response = requestsession.get(url=finalurl, timeout=60)
-                hatext = json.loads(response.text)
+                hatext = strip_json_escapes(json.loads(response.text))
+                add_records('hybrid_analysis', 'habatchcheck', hatext)
 
-                verdict = ''
-                threat_score = ''
-                av_detect = ''
+                verdict, threat_score, av_detect = _summarize(response, hatext)
 
-                rc = str(hatext)
-                if 'message' not in rc and 'Failed' not in rc and hatext != 0:
-                    verdict = str(hatext.get('verdict', '')) if hatext.get('verdict') else ''
-                    threat_score = str(hatext.get('threat_score', '')) if hatext.get('threat_score') is not None else ''
-                    multiscan = hatext.get('multiscan_result')
-                    if multiscan is not None:
-                        av_detect = str(multiscan)
-                    elif hatext.get('av_detect') is not None:
-                        av_detect = str(hatext.get('av_detect'))
-
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.yellow + "%-68s " % h, end='')
-                    print(mycolors.foreground.lightcyan + "%-22s " % verdict, end='')
-                    print(mycolors.foreground.lightred + "%-14s " % threat_score.center(12), end='')
-                    print(mycolors.foreground.pink + "%-14s" % av_detect.center(12))
+                if verdict == HA_NOT_FOUND:
+                    missing = missing + 1
+                elif verdict.startswith('HTTP '):
+                    rejected = rejected + 1
                 else:
-                    print(mycolors.foreground.cyan + "%-68s " % h, end='')
-                    print(mycolors.foreground.blue + "%-22s " % verdict, end='')
-                    print(mycolors.foreground.red + "%-14s " % threat_score.center(12), end='')
-                    print(mycolors.foreground.purple + "%-14s" % av_detect.center(12))
+                    known = known + 1
+
+                print(hashcolor + h.ljust(hashcol)
+                      + _verdict_color(verdict) + verdict.ljust(verdictcol)
+                      + (errorcolor if threat_score else structure)
+                      + (threat_score if threat_score else HA_EMPTY).center(BATCH_COL_SCORE).ljust(scorecol)
+                      + (mycolors.foreground.accent(cv.bkg) if av_detect else structure)
+                      + (av_detect if av_detect else HA_EMPTY).center(BATCH_COL_AVDETECT)
+                      + mycolors.reset)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-68s error: %s" % (h, str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-68s error: %s" % (h, str(e)))
+                rejected = rejected + 1
+                print(errorcolor + h.ljust(hashcol) + "error: %s" % str(e) + mycolors.reset)
+
+        counts = "%d hash(es) checked: %d known to Hybrid Analysis, %d not found" % (len(hashes), known, missing)
+        if rejected:
+            counts = counts + ", %d not checked" % rejected
+
+        print("")
+        print(bullet(counts + ".", total))
+        if missing:
+            print(bullet("not found only means the file has never been submitted to Hybrid Analysis. It is not a verdict that the file is clean.", total))
+        if known:
+            print(bullet("Threat Score and AV Detect are reported as n/a when Hybrid Analysis holds the sample but has not scored it, which is normal for a hash it has not detonated.", total))
 
         printr()
 
     def habatchdircheck(self, directory, user_agent='Falcon Sandbox'):
-        haurl = 'https://www.hybrid-analysis.com/api/v2'
+        haurl = 'https://hybrid-analysis.com/api/v2'
 
         self.requestHAAPI()
 
@@ -618,64 +701,81 @@ class HybridAnalysisExtractor():
             printr()
             return
 
-        print("\n")
-        print((mycolors.reset + "Hybrid Analysis Directory Check".center(100)), end='')
-        print((mycolors.reset + "".center(28)), end='')
-        print("\n" + (100 * '-').center(50))
+        namecol = max([len("Filename")] + [display_width(f) for f, _ in files]) + BATCH_COL_GUTTER
+        hashcol = max([len("Hash")] + [len(x) for _, x in files]) + BATCH_COL_GUTTER
+        verdictcol = _verdict_width()
+        scorecol = BATCH_COL_SCORE + BATCH_COL_GUTTER
+        avcol = BATCH_COL_AVDETECT + BATCH_COL_GUTTER
+        total = namecol + hashcol + verdictcol + scorecol + avcol
 
-        print(mycolors.reset + "\n%-42s %-66s %-14s %-10s %s" % ("Filename", "Hash", "Verdict", "Threat Score", "AV Detect (%)"))
-        print((148 * '-'))
+        structure = mycolors.foreground.neutral(cv.bkg)
+        namecolor = mycolors.foreground.lightgreen if cv.bkg == 1 else mycolors.foreground.blue
+        hashcolor = mycolors.foreground.yellow if cv.bkg == 1 else mycolors.foreground.blue
+        errorcolor = mycolors.foreground.error(cv.bkg)
+
+        print("\n")
+        print(mycolors.reset + "Hybrid Analysis Directory Check".center(total))
+        print(structure + (total * '-'))
+        print("")
+        print(structure + "Filename".ljust(namecol) + "Hash".ljust(hashcol)
+              + "Verdict".ljust(verdictcol) + "Threat Score".ljust(scorecol) + "AV Detect (%)")
+        print(structure + (total * '-') + mycolors.reset)
 
         requestsession = create_session()
         requestsession.headers.update({'user-agent': user_agent})
         requestsession.headers.update({'api-key': self.HAAPI})
         requestsession.headers.update({'accept': 'application/json'})
 
+        known = 0
+        missing = 0
+        rejected = 0
+
         for fname, h in files:
             try:
                 finalurl = '/'.join([haurl, 'overview', quote(h, safe=''), 'summary'])
                 response = requestsession.get(url=finalurl, timeout=60)
-                hatext = json.loads(response.text)
+                hatext = strip_json_escapes(json.loads(response.text))
+                add_records('hybrid_analysis', 'habatchdircheck', hatext)
 
-                verdict = ''
-                threat_score = ''
-                av_detect = ''
+                verdict, threat_score, av_detect = _summarize(response, hatext)
 
-                rc = str(hatext)
-                if 'message' not in rc and 'Failed' not in rc and hatext != 0:
-                    verdict = str(hatext.get('verdict', '')) if hatext.get('verdict') else ''
-                    threat_score = str(hatext.get('threat_score', '')) if hatext.get('threat_score') is not None else ''
-                    multiscan = hatext.get('multiscan_result')
-                    if multiscan is not None:
-                        av_detect = str(multiscan)
-                    elif hatext.get('av_detect') is not None:
-                        av_detect = str(hatext.get('av_detect'))
-
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightgreen + "%-42s " % fname[:40], end='')
-                    print(mycolors.foreground.yellow + "%-66s " % h, end='')
-                    print(mycolors.foreground.lightcyan + "%-14s " % verdict, end='')
-                    print(mycolors.foreground.lightred + "%-10s " % threat_score.center(8), end='')
-                    print(mycolors.foreground.pink + "%-10s" % av_detect.center(8))
+                if verdict == HA_NOT_FOUND:
+                    missing = missing + 1
+                elif verdict.startswith('HTTP '):
+                    rejected = rejected + 1
                 else:
-                    print(mycolors.foreground.blue + "%-42s " % fname[:40], end='')
-                    print(mycolors.foreground.cyan + "%-66s " % h, end='')
-                    print(mycolors.foreground.blue + "%-14s " % verdict, end='')
-                    print(mycolors.foreground.red + "%-10s " % threat_score.center(8), end='')
-                    print(mycolors.foreground.purple + "%-10s" % av_detect.center(8))
+                    known = known + 1
+
+                print(namecolor + pad(fname, namecol)
+                      + hashcolor + h.ljust(hashcol)
+                      + _verdict_color(verdict) + verdict.ljust(verdictcol)
+                      + (errorcolor if threat_score else structure)
+                      + (threat_score if threat_score else HA_EMPTY).center(BATCH_COL_SCORE).ljust(scorecol)
+                      + (mycolors.foreground.accent(cv.bkg) if av_detect else structure)
+                      + (av_detect if av_detect else HA_EMPTY).center(BATCH_COL_AVDETECT)
+                      + mycolors.reset)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-42s error: %s" % (fname[:40], str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-42s error: %s" % (fname[:40], str(e)))
+                rejected = rejected + 1
+                print(errorcolor + pad(fname, namecol) + "error: %s" % str(e) + mycolors.reset)
+
+        counts = "%d file(s) checked: %d known to Hybrid Analysis, %d not found" % (len(files), known, missing)
+        if rejected:
+            counts = counts + ", %d not checked" % rejected
+
+        print("")
+        print(bullet(counts + ".", total))
+        if missing:
+            print(bullet("not found only means the file has never been submitted to Hybrid Analysis. It is not a verdict that the file is clean.", total))
+        if known:
+            print(bullet("Threat Score and AV Detect are reported as n/a when Hybrid Analysis holds the sample but has not scored it, which is normal for a hash it has not detonated.", total))
 
         printr()
 
     @cached("ha_hash")
     def _raw_hash_info(self, hash_value):
         try:
-            haurl = 'https://www.hybrid-analysis.com/api/v2'
+            haurl = 'https://hybrid-analysis.com/api/v2'
             requestsession = create_session()
             requestsession.headers.update({
                 'api-key': self.HAAPI,
@@ -684,7 +784,7 @@ class HybridAnalysisExtractor():
             })
             response = requestsession.get(haurl + '/overview/' + quote(hash_value, safe='') + '/summary')
             if response.status_code == 200:
-                return response.json()
+                return strip_json_escapes(response.json())
         except Exception:
             pass
         return None

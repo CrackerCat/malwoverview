@@ -7,14 +7,14 @@ Supports four providers (configured via .malwapi.conf [LLM] section):
 - ollama:  Local Ollama instance (free, private)
 """
 
+import json
 import re
 import requests
 import malwoverview.modules.configvars as cv
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, strip_terminal_escapes, wrap_ansi
 
 MAX_PROMPT_CHARS = 8000
 _MODEL_RE = re.compile(r'^[a-zA-Z0-9._:-]+$')
-_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 _MD_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*\S)\s*$')
 _MD_BOLD_RE = re.compile(r'\*\*(.+?)\*\*')
 
@@ -67,9 +67,46 @@ DATA (enclosed in triple backticks):
 """
 
 COLSIZE = 20
+ENRICHMENT_WIDTH = 110
 
 
-def colorize_enrichment(text, bkg=None):
+def records_to_prompt_text(records, max_chars=MAX_PROMPT_CHARS):
+    """Serialize collected result records into the JSON payload sent to the LLM.
+
+    Records are dropped from the tail until the payload fits max_chars, and the
+    omission is reported inline so the model knows the data is partial.
+    """
+    if not records:
+        return ''
+
+    records = strip_json_escapes(records)
+    kept = []
+    total = 0
+    for record in records:
+        try:
+            chunk = json.dumps(record, default=str, ensure_ascii=False)
+        except (TypeError, ValueError):
+            continue
+        if kept and total + len(chunk) > max_chars:
+            break
+        kept.append(record)
+        total += len(chunk)
+
+    if not kept:
+        return ''
+
+    try:
+        text = json.dumps(kept, indent=2, default=str, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return ''
+
+    omitted = len(records) - len(kept)
+    if omitted > 0:
+        text = f"{text}\n\n[{omitted} further record(s) omitted for length]"
+    return text
+
+
+def colorize_enrichment(text, bkg=None, width=None):
     """Colorize Claude/markdown-style enrichment output for terminal display.
 
     Recognizes ATX headings (# .. ######) and inline **bold** spans, strips the
@@ -77,6 +114,12 @@ def colorize_enrichment(text, bkg=None):
     background (bkg, defaulting to cv.bkg; the TUI passes bkg=1 since it always
     renders on a dark theme). Returns plain ANSI text: print it directly
     (CLI/REPL) or pass it to rich.text.Text.from_ansi (TUI).
+
+    width wraps the coloured result to that many terminal cells, continuing the
+    active colour on each new line and indenting continuations under a list
+    marker. The CLI and REPL pass ENRICHMENT_WIDTH so the prose lines up with
+    the rule printed above it; the TUI leaves it None because rich's Panel
+    already wraps to the widget.
     """
     if not text:
         return text
@@ -89,7 +132,7 @@ def colorize_enrichment(text, bkg=None):
     base = mycolors.foreground.nearwhite if bkg == 1 else mycolors.foreground.darkgrey
     h1 = bold + mycolors.foreground.blue
     h2 = bold + mycolors.foreground.purple
-    strong = bold + mycolors.foreground.cyan
+    strong = bold + (mycolors.foreground.cyan if bkg == 1 else mycolors.foreground.green)
 
     out = []
     for line in text.split('\n'):
@@ -101,7 +144,8 @@ def colorize_enrichment(text, bkg=None):
         else:
             emphasized = _MD_BOLD_RE.sub(lambda m: strong + m.group(1) + reset + base, line)
             out.append(base + emphasized + reset)
-    return '\n'.join(out)
+    rendered = '\n'.join(out)
+    return wrap_ansi(rendered, width) if width else rendered
 
 
 class LLMEnricher:
@@ -155,7 +199,7 @@ class LLMEnricher:
                 result = self._call_ollama(prompt)
             else:
                 return f"Unknown LLM provider: {self.provider}. Use: claude, gemini, openai, or ollama."
-            return _ANSI_RE.sub('', result) if result else result
+            return strip_terminal_escapes(result) if result else result
         except requests.exceptions.ConnectionError:
             if self.provider == 'ollama':
                 return "Cannot connect to Ollama. Is it running? Start with: ollama serve"
@@ -261,19 +305,19 @@ class LLMEnricher:
             return
 
         if cv.bkg == 1:
-            print(mycolors.foreground.lightgrey + "\n\n" + (110 * '-'))
+            print(mycolors.foreground.lightgrey + "\n\n" + (ENRICHMENT_WIDTH * '-'))
             print(mycolors.foreground.lightgrey + f"{'LLM Enrichment:'.ljust(COLSIZE)}" +
                   mycolors.foreground.lightgrey + f"Provider: {self.provider}")
-            print(mycolors.foreground.lightgrey + (110 * '-') + "\n")
+            print(mycolors.foreground.lightgrey + (ENRICHMENT_WIDTH * '-') + "\n")
         else:
-            print(mycolors.foreground.darkgrey + "\n\n" + (110 * '-'))
+            print(mycolors.foreground.darkgrey + "\n\n" + (ENRICHMENT_WIDTH * '-'))
             print(mycolors.foreground.darkgrey + f"{'LLM Enrichment:'.ljust(COLSIZE)}" +
                   mycolors.foreground.darkgrey + f"Provider: {self.provider}")
-            print(mycolors.foreground.darkgrey + (110 * '-') + "\n")
+            print(mycolors.foreground.darkgrey + (ENRICHMENT_WIDTH * '-') + "\n")
 
         result = self.enrich(data_text, prompt_type)
         if not result:
             return
 
-        print(colorize_enrichment(result))
+        print(colorize_enrichment(result, width=ENRICHMENT_WIDTH))
         print(mycolors.reset)

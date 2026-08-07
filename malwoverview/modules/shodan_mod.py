@@ -1,10 +1,32 @@
 import malwoverview.modules.configvars as cv
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import (
+    mycolors, printr, strip_json_escapes, bullet, column, fit, pad,
+    report_header,
+)
 from malwoverview.utils.session import create_session
 from malwoverview.utils.cache import cached
+from malwoverview.utils.config import redact_secret
 from malwoverview.utils.output import collector, is_text_output
 from urllib.parse import quote
 import json
+import re
+
+
+REPORT_WIDTH = 100
+
+SEARCH_HEADERS = ("IP", "Port", "Country", "Product", "Vulns", "Organization")
+SEARCH_KEYS = ('ip', 'port', 'country', 'product', 'vulns', 'org')
+
+COL_GUTTER = 2
+COL_IP_MAX = len("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
+COL_PRODUCT_MAX = 30
+COL_ORG_MAX = 34
+COL_CAPS = {'ip': COL_IP_MAX, 'product': COL_PRODUCT_MAX, 'org': COL_ORG_MAX}
+
+SNIPPET_MAX = 200
+
+SERVER_RE = re.compile(r'^Server:[ \t]*(.+)$', re.IGNORECASE | re.MULTILINE)
+DATE_RE = re.compile(r'^Date:[ \t]*.*$', re.IGNORECASE | re.MULTILINE)
 
 
 class ShodanExtractor():
@@ -39,13 +61,13 @@ class ShodanExtractor():
             if response.status_code == 429:
                 return {'error': 'Rate limit exceeded. Please wait and try again.'}
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
             return data
 
         except ValueError:
             return {'error': 'Error parsing JSON response from Shodan.'}
         except Exception as e:
-            return {'error': str(e)}
+            return {'error': redact_secret(e, self.SHODANAPI)}
 
     def shodan_ip(self, ip):
         self.requestSHODANAPI()
@@ -55,9 +77,7 @@ class ShodanExtractor():
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "SHODAN IP REPORT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("SHODAN IP REPORT", REPORT_WIDTH))
 
             if 'error' in data:
                 if is_text_output():
@@ -113,7 +133,73 @@ class ShodanExtractor():
 
         except Exception as e:
             if is_text_output():
-                print(mycolors.foreground.error(cv.bkg) + f"\nError: {str(e)}\n" + mycolors.reset)
+                print(mycolors.foreground.error(cv.bkg) + f"\nError: {redact_secret(e, self.SHODANAPI)}\n" + mycolors.reset)
+
+    def _product_cell(self, match):
+        product = str(match.get('product') or '').strip()
+        if product:
+            version = str(match.get('version') or '').strip()
+            return ("%s %s" % (product, version)).strip()
+        found = SERVER_RE.search(str(match.get('data') or ''))
+        if found:
+            return found.group(1).strip()
+        return 'n/a'
+
+    def _banner_snippet(self, match):
+        text = DATE_RE.sub('', str(match.get('data') or ''))
+        return ' '.join(text.split())[:SNIPPET_MAX]
+
+    def _search_widths(self, rows):
+        widths = {}
+        for index, key in enumerate(SEARCH_KEYS):
+            last = index == len(SEARCH_KEYS) - 1
+            widths[key] = column(
+                SEARCH_HEADERS[index], [row[index] for row in rows],
+                cap=COL_CAPS.get(key),
+                gutter=0 if last else COL_GUTTER,
+            )
+        widths['total'] = sum(widths[key] for key in SEARCH_KEYS)
+        return widths
+
+    def _product_color(self):
+        if cv.bkg == 1:
+            return mycolors.foreground.lightblue
+        return mycolors.foreground.blue
+
+    def _vulns_color(self, vulns):
+        if not vulns.isdigit():
+            return mycolors.foreground.neutral(cv.bkg)
+        if int(vulns) > 0:
+            return mycolors.foreground.error(cv.bkg)
+        return mycolors.foreground.ok(cv.bkg)
+
+    def _print_search_title(self, width):
+        print()
+        print(mycolors.reset + "SHODAN SEARCH REPORT".center(width))
+        print(mycolors.foreground.neutral(cv.bkg) + (width * '-') + mycolors.reset)
+
+    def _print_search_header(self, widths):
+        structure = mycolors.foreground.neutral(cv.bkg)
+        print()
+        print(
+            structure
+            + "".join(pad(SEARCH_HEADERS[i], widths[key])
+                      for i, key in enumerate(SEARCH_KEYS))
+            + mycolors.reset
+        )
+        print(structure + (widths['total'] * '-') + mycolors.reset)
+
+    def _print_search_row(self, row, widths):
+        ip_addr, port, country, product, vulns, org = row
+        print(
+            mycolors.foreground.info(cv.bkg) + pad(fit(ip_addr, widths['ip'] - COL_GUTTER), widths['ip'])
+            + mycolors.foreground.accent(cv.bkg) + pad(port, widths['port'])
+            + mycolors.foreground.ok(cv.bkg) + pad(country, widths['country'])
+            + self._product_color() + pad(fit(product, widths['product'] - COL_GUTTER), widths['product'])
+            + self._vulns_color(vulns) + pad(vulns, widths['vulns'])
+            + mycolors.foreground.accent(cv.bkg) + fit(org, widths['org'])
+            + mycolors.reset
+        )
 
     def shodan_search(self, query):
         self.requestSHODANAPI()
@@ -126,63 +212,90 @@ class ShodanExtractor():
             session = create_session(headers)
             response = session.get(url, params=params, timeout=30)
 
-            if is_text_output():
-                print()
-                print((mycolors.reset + "SHODAN SEARCH REPORT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
-
             if response.status_code == 401:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + "\nUnauthorized. Check your Shodan API key.\n" + mycolors.reset)
                 return
             if response.status_code == 403:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + "\nAccess forbidden. Your API plan may not support this query.\n" + mycolors.reset)
                 return
             if response.status_code == 404:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + "\nNo results found.\n" + mycolors.reset)
                 return
             if response.status_code == 429:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + "\nRate limit exceeded. Please wait and try again.\n" + mycolors.reset)
                 return
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
 
             if 'matches' not in data or len(data['matches']) == 0:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + "\nNo results found for this query.\n" + mycolors.reset)
                 return
 
-            COLSIZE = 15
+            rows = []
 
             for match in data['matches']:
-                ip_addr = str(match.get('ip_str', 'N/A'))
-                port = str(match.get('port', 'N/A'))
-                org = str(match.get('org', 'N/A'))
-                snippet = str(match.get('data', ''))[:80].replace('\n', ' ').replace('\r', '')
+                ip_addr = str(match.get('ip_str') or 'n/a')
+                port = str(match.get('port') or 'n/a')
+                org = str(match.get('org') or 'n/a')
+                country = str(match.get('location', {}).get('country_code') or 'n/a')
+                product = self._product_cell(match)
+                vulns = str(len(match.get('vulns') or {}))
 
                 record = {
                     'ip': ip_addr,
                     'port': port,
+                    'country': country,
+                    'product': product,
+                    'vulns': vulns,
                     'org': org,
-                    'data_snippet': snippet
+                    'asn': str(match.get('asn') or 'n/a'),
+                    'hostnames': ', '.join(match.get('hostnames') or []) or 'n/a',
+                    'data_snippet': self._banner_snippet(match),
                 }
                 collector.add(record)
 
-                if is_text_output():
-                    print()
-                    print(mycolors.foreground.info(cv.bkg) + f"IP:".ljust(COLSIZE) + "\t" + mycolors.reset + ip_addr)
-                    print(mycolors.foreground.info(cv.bkg) + f"Port:".ljust(COLSIZE) + "\t" + mycolors.reset + port)
-                    print(mycolors.foreground.info(cv.bkg) + f"Organization:".ljust(COLSIZE) + "\t" + mycolors.reset + org)
-                    print(mycolors.foreground.info(cv.bkg) + f"Data Snippet:".ljust(COLSIZE) + "\t" + mycolors.reset + snippet)
-                    print((50 * '-'))
+                rows.append((ip_addr, port, country, product, vulns, org))
+
+            if is_text_output():
+                widths = self._search_widths(rows)
+                self._print_search_title(widths['total'])
+                self._print_search_header(widths)
+                for row in rows:
+                    self._print_search_row(row, widths)
+
+                structure = mycolors.foreground.neutral(cv.bkg)
+                total = data.get('total', len(rows))
+                flagged = sum(1 for row in rows if row[4].isdigit() and int(row[4]) > 0)
+
+                print()
+                if total > len(rows):
+                    print(bullet("Showing %d of %d total results."
+                                 % (len(rows), total), widths['total'], structure))
+                else:
+                    print(bullet("%d result(s) found." % len(rows),
+                                 widths['total'], structure))
+                if flagged:
+                    print(bullet("Vulns counts the CVEs Shodan lists against the banner; %d of "
+                                 "these hosts carry at least one. A count of 0 means none are "
+                                 "listed, not that none exist."
+                                 % flagged, widths['total'], structure))
+                print(bullet("Product is what Shodan parsed from the banner, or the Server header "
+                             "when it parsed nothing. The full banner is in the json and csv "
+                             "records.", widths['total'], structure))
 
         except ValueError:
             if is_text_output():
                 print(mycolors.foreground.error(cv.bkg) + "\nError parsing JSON response from Shodan.\n" + mycolors.reset)
         except Exception as e:
             if is_text_output():
-                print(mycolors.foreground.error(cv.bkg) + f"\nError: {str(e)}\n" + mycolors.reset)
+                print(mycolors.foreground.error(cv.bkg) + f"\nError: {redact_secret(e, self.SHODANAPI)}\n" + mycolors.reset)

@@ -1,12 +1,15 @@
 import malwoverview.modules.configvars as cv
 from polyswarm_api.api import PolyswarmAPI
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.output import collector
+from malwoverview.utils.colors import mycolors, printr, divider
 from malwoverview.utils.hash import sha256hash
 from malwoverview.utils.peinfo import ftype
 import pefile
 from requests.exceptions import RetryError
 from types import SimpleNamespace
 import re
+
+POLYSWARM_TITLE = "POLYSWARM.NETWORK RESULTS"
 import os
 
 
@@ -50,13 +53,20 @@ class PolyswarmExtractor():
                 exit(1)
 
         printr()
-        print("POLYSWARM.NETWORK RESULTS")
-        print('-' * 25, end="\n\n")
+        print(POLYSWARM_TITLE)
+        print(divider(len(POLYSWARM_TITLE)), end="\n\n")
 
         try:
             if (metainfo == 4):
                 metaresults = polyswarm.search_by_metadata("pefile.imphash:" + fimph)
                 for x in metaresults:
+                    collector.add({
+                        'service': 'polyswarm',
+                        'query_type': 'polymetasearch',
+                        'query': fimph,
+                        'sha256': getattr(x, 'sha256', None),
+                        'md5': getattr(x, 'md5', None),
+                    })
                     if (cv.bkg == 1):
                         if (x.sha256):
                             print(mycolors.reset + "\nSHA256: " + mycolors.foreground.lightred + "%s" % x.sha256, end=' ')
@@ -76,7 +86,7 @@ class PolyswarmExtractor():
                         else:
                             print(mycolors.reset + "MD5: " + mycolors.foreground.green + "%s" + "None", end=' ')
                 print(mycolors.reset + "\n")
-                exit(0)
+                return True
 
             try:
                 if (metainfo == 5):
@@ -87,7 +97,7 @@ class PolyswarmExtractor():
                     poly = (r'"' + poly + r'"')
                     metaresults = polyswarm.search_by_metadata("strings.urls:" + poly)
                 if (metainfo == 8):
-                    poly = ('scan.latest_scan.\*.metadata.malware_family:' + poly)
+                    poly = (r'scan.latest_scan.\*.metadata.malware_family:' + poly)
                     metaresults = polyswarm.search_by_metadata(poly)
             except Exception:
                 if (cv.bkg == 1):
@@ -95,15 +105,23 @@ class PolyswarmExtractor():
                 else:
                     print((mycolors.foreground.red + "\nInformation not found on Polyswarm.\n"))
                 print(mycolors.reset)
-                exit(0)
+                return True
 
             for y in metaresults:
+                collector.add({
+                    'service': 'polyswarm',
+                    'query_type': 'polymetasearch',
+                    'query': poly,
+                    'sha256': getattr(y, 'sha256', None),
+                    'malicious': (y.scan or {}).get('detections', {}).get('malicious') if hasattr(y, 'scan') else None,
+                    'total': (y.scan or {}).get('detections', {}).get('total') if hasattr(y, 'scan') else None,
+                })
                 if (cv.bkg == 1):
                     if (y.sha256):
                         print(mycolors.reset + "\nSHA256: " + mycolors.foreground.lightcyan + "%s" % y.sha256, end=' ')
                     else:
                         print(mycolors.reset + "Result: " + mycolors.foreground.yellow + "Sample not found!", end=' ')
-                        exit(0)
+                        return True
 
                     try:
                         score = next(polyswarm.search(y.sha256))
@@ -122,7 +140,7 @@ class PolyswarmExtractor():
                         print(mycolors.reset + "\nSHA256: " + mycolors.foreground.green + "%s" % y.sha256, end=' ')
                     else:
                         print(mycolors.reset + "scan: " + mycolors.foreground.purple + "Sample not found!", end=' ')
-                        exit(0)
+                        return True
 
                     try:
                         score = next(polyswarm.search(y.sha256))
@@ -180,8 +198,8 @@ class PolyswarmExtractor():
             instance = polyswarm.submit(poly)
             result = polyswarm.wait_for(instance)
             printr()
-            print("POLYSWARM.NETWORK RESULTS")
-            print('-' * 25, end="\n\n")
+            print(POLYSWARM_TITLE)
+            print(divider(len(POLYSWARM_TITLE)), end="\n\n")
             for assertion in result.assertions:
                 if (cv.bkg == 1):
                     print(mycolors.reset + "Engine: " + mycolors.foreground.lightcyan + "%-25s" % assertion.author_name, end='')
@@ -204,6 +222,17 @@ class PolyswarmExtractor():
                 if (myhashes.polyscore):
                     score = myhashes.polyscore
 
+            collector.add({
+                'service': 'polyswarm',
+                'query_type': 'polyfile',
+                'query': poly,
+                'sha256': sha256,
+                'file_type': filetype,
+                'extended_type': extended,
+                'first_seen': str(firstseen) if firstseen else None,
+                'polyscore': score,
+            })
+
             if (cv.bkg == 1):
                 if (sha256):
                     print(mycolors.foreground.lightred + "\nSHA256: \t%s" % sha256)
@@ -217,13 +246,13 @@ class PolyswarmExtractor():
                     print(mycolors.foreground.yellow + "\nPolyscore: \t%f" % score)
             else:
                 if (sha256):
-                    print(mycolors.foreground.cyan + "\nSHA256: \t%s" % sha256)
+                    print(mycolors.foreground.blue + "\nSHA256: \t%s" % sha256)
                 if (filetype):
-                    print(mycolors.foreground.cyan + "File Type: \t%s" % filetype)
+                    print(mycolors.foreground.blue + "File Type: \t%s" % filetype)
                 if (extended):
-                    print(mycolors.foreground.cyan + "Extended Info: \t%s" % extended)
+                    print(mycolors.foreground.blue + "Extended Info: \t%s" % extended)
                 if (firstseen):
-                    print(mycolors.foreground.cyan + "First seen: \t%s" % firstseen)
+                    print(mycolors.foreground.blue + "First seen: \t%s" % firstseen)
                 if (score is not None):
                     print(mycolors.foreground.red + "\nPolyscore: \t%f" % score)
             printr()
@@ -254,8 +283,8 @@ class PolyswarmExtractor():
             results = polyswarm.search(poly)
 
             printr()
-            print("POLYSWARM.NETWORK RESULTS")
-            print('-' * 25, end="\n\n")
+            print(POLYSWARM_TITLE)
+            print(divider(len(POLYSWARM_TITLE)), end="\n\n")
             printr()
 
             for myhashes in results:
@@ -276,6 +305,16 @@ class PolyswarmExtractor():
                     firstseen = myhashes.first_seen
                 if (myhashes.polyscore):
                     score = myhashes.polyscore
+                collector.add({
+                    'service': 'polyswarm',
+                    'query_type': 'polyhashsearch',
+                    'query': poly,
+                    'sha256': sha256,
+                    'file_type': filetype,
+                    'extended_type': extended,
+                    'first_seen': str(firstseen) if firstseen else None,
+                    'polyscore': score,
+                })
                 results = myhashes.assertions
                 for i in results:
                     if (cv.bkg == 1):
@@ -299,13 +338,13 @@ class PolyswarmExtractor():
                     print(mycolors.reset + f"\n\nSample downloaded to: {DOWN_DIR}")
             else:
                 if (sha256):
-                    print(mycolors.foreground.cyan + "\nSHA256: \t%s" % sha256)
+                    print(mycolors.foreground.blue + "\nSHA256: \t%s" % sha256)
                 if (filetype):
-                    print(mycolors.foreground.cyan + "File Type: \t%s" % filetype)
+                    print(mycolors.foreground.blue + "File Type: \t%s" % filetype)
                 if (extended):
-                    print(mycolors.foreground.cyan + "Extended Info: \t%s" % extended)
+                    print(mycolors.foreground.blue + "Extended Info: \t%s" % extended)
                 if (firstseen):
-                    print(mycolors.foreground.cyan + "First seen: \t%s" % firstseen)
+                    print(mycolors.foreground.blue + "First seen: \t%s" % firstseen)
                 if (score is not None):
                     print(mycolors.foreground.red + "\nPolyscore: \t%f" % score)
                 if (down == 1):

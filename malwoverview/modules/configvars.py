@@ -7,3 +7,6 @@ verbosity = 0
 cache_enabled = True
 cache_ttl = 3600
 attack_map = False
+no_resolve = False
+defang = False
+ioc_filter = True

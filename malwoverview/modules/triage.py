@@ -1,16 +1,28 @@
 import malwoverview.modules.configvars as cv
 from requests import Request
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, bullet, column, fit, pad, report_header, divider
 import binascii
+import re
 import textwrap
 from io import BytesIO
 import requests
 import json
 import os
 from urllib.parse import quote
-from malwoverview.utils.session import create_session
+from malwoverview.utils.output import add_records
+from malwoverview.utils.session import create_session, failure_message
 from malwoverview.utils.hash import sha256hash
 
+
+
+REPORT_WIDTH = 100
+SUBMIT_REPORT_WIDTH = 80
+
+BATCH_GUTTER = 2
+BATCH_COL_FILENAME = 30
+BATCH_COL_SCORE = 5
+BATCH_COL_TAGS = 64
+BATCH_MAX_TAGS = 5
 
 
 class TriageExtractor():
@@ -18,6 +30,85 @@ class TriageExtractor():
 
     def __init__(self, TRIAGEAPI):
         self.TRIAGEAPI = TRIAGEAPI
+
+    def _filename_width(self, filenames):
+        if filenames:
+            return column("Filename", filenames, cap=BATCH_COL_FILENAME, gutter=BATCH_GUTTER)
+        return max(len("Filename"), BATCH_COL_FILENAME) + BATCH_GUTTER
+
+    def _batch_widths(self, hashes, filenames=None, filename_first=False):
+        widths = {}
+        keys = []
+        if filenames is not None and filename_first:
+            widths['filename'] = self._filename_width(filenames)
+            keys.append('filename')
+        widths['hash'] = column("Hash", hashes, gutter=BATCH_GUTTER)
+        keys.append('hash')
+        if filenames is not None and not filename_first:
+            widths['filename'] = self._filename_width(filenames)
+            keys.append('filename')
+        widths['score'] = max(len("Score"), BATCH_COL_SCORE) + BATCH_GUTTER
+        widths['tags'] = max(len("Tags"), BATCH_COL_TAGS)
+        keys.extend(['score', 'tags'])
+        widths['total'] = sum(widths[key] for key in keys)
+        widths['keys'] = keys
+        return widths
+
+    def _print_batch_title(self, title, width):
+        print()
+        print(mycolors.reset + title.center(width))
+        print(mycolors.foreground.neutral(cv.bkg) + (width * '-') + mycolors.reset)
+
+    def _print_batch_header(self, widths):
+        structure = mycolors.foreground.neutral(cv.bkg)
+        headers = {'filename': "Filename", 'hash': "Hash",
+                   'score': "Score", 'tags': "Tags"}
+        print()
+        print(structure
+              + "".join(pad(headers[key], widths[key]) for key in widths['keys'])
+              + mycolors.reset)
+        print(structure + (widths['total'] * '-') + mycolors.reset)
+
+    def _print_batch_row(self, widths, hash_value, filename, score, tags):
+        cells = {
+            'hash': mycolors.foreground.accent(cv.bkg) + pad(hash_value, widths['hash']),
+            'filename': mycolors.foreground.info(cv.bkg)
+            + pad(fit(filename or 'n/a', widths['filename'] - BATCH_GUTTER), widths['filename']),
+            'score': self._score_color(score)
+            + pad(score or 'n/a', widths['score']),
+            'tags': self._tags_color() + fit(tags or 'n/a', widths['tags']),
+        }
+        print("".join(cells[key] for key in widths['keys']) + mycolors.reset)
+
+    def _tags_color(self):
+        if cv.bkg == 1:
+            return mycolors.foreground.lightblue
+        return mycolors.foreground.blue
+
+    def _score_color(self, score):
+        if not str(score).isdigit():
+            return mycolors.foreground.neutral(cv.bkg)
+        if int(score) >= 8:
+            return mycolors.foreground.error(cv.bkg)
+        if int(score) >= 5:
+            return mycolors.foreground.warning(cv.bkg)
+        return mycolors.foreground.ok(cv.bkg)
+
+    def _print_batch_summary(self, widths, checked, found, failed):
+        structure = mycolors.foreground.neutral(cv.bkg)
+        counts = "%d hash(es) checked: %d found, %d not found" % (
+            checked, found, checked - found - failed)
+        if failed:
+            counts = counts + ", %d not checked" % failed
+        print()
+        print(bullet(counts + ".", widths['total'], structure))
+        if found < checked:
+            print(bullet("not found only means Triage holds no analysis for the sample. It is not "
+                         "a verdict that the file is clean.", widths['total'], structure))
+        if found:
+            print(bullet("Score is Triage's own 0-10 rating for the analysis it ran, not a "
+                         "detection count. Tags shows at most %d of them."
+                         % BATCH_MAX_TAGS, widths['total'], structure))
 
     def requestTRIAGEAPI(self):
         if (self.TRIAGEAPI == ''):
@@ -33,15 +124,14 @@ class TriageExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "TRIAGE OVERVIEW REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("TRIAGE OVERVIEW REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json', 'Authorization': 'Bearer ' + self.TRIAGEAPI})
             safe_query = quote(triagex, safe='')
             triageresponse = requestsession.get(triage + safe_query)
-            triagetext = json.loads(triageresponse.text)
+            triagetext = strip_json_escapes(json.loads(triageresponse.text))
+            add_records('triage', 'triage_search', triagetext)
 
             if 'error' in triagetext:
                 if triagetext['error'] == "NOT_FOUND":
@@ -128,7 +218,7 @@ class TriageExtractor():
                                                     if d['pick']:
                                                         print(mycolors.foreground.lightcyan + "\n\t   pick: ".ljust(13) + mycolors.reset + d['pick'], end=' ')
 
-                                print("\n" + (90 * '-').center(45), end='')
+                                print("\n" + divider(REPORT_WIDTH), end='')
 
                     if (i == "next"):
                         if (triagetext['next'] is not None):
@@ -142,31 +232,31 @@ class TriageExtractor():
                                 y = d.keys()
                                 if ("id" in y):
                                     if d['id']:
-                                        print(mycolors.foreground.cyan + "\nid: ".ljust(12) + mycolors.reset + d['id'], end=' ')
+                                        print(mycolors.foreground.blue + "\nid: ".ljust(12) + mycolors.reset + d['id'], end=' ')
 
                                 if ("status" in y):
                                     if d['status']:
-                                        print(mycolors.foreground.cyan + "\nstatus: ".ljust(12) + mycolors.reset + d['status'], end=' ')
+                                        print(mycolors.foreground.blue + "\nstatus: ".ljust(12) + mycolors.reset + d['status'], end=' ')
 
                                 if ("kind" in y):
                                     if d['kind']:
-                                        print(mycolors.foreground.cyan + "\nkind: ".ljust(12) + mycolors.reset + d['kind'], end=' ')
+                                        print(mycolors.foreground.blue + "\nkind: ".ljust(12) + mycolors.reset + d['kind'], end=' ')
 
                                 if ("filename" in y):
                                     if d['filename']:
-                                        print(mycolors.foreground.cyan + "\nfilename: ".ljust(12) + mycolors.reset + d['filename'], end=' ')
+                                        print(mycolors.foreground.blue + "\nfilename: ".ljust(12) + mycolors.reset + d['filename'], end=' ')
 
                                 if ("submitted" in y):
                                     if d['submitted']:
-                                        print(mycolors.foreground.cyan + "\nsubmitted: ".ljust(12) + mycolors.reset + d['submitted'], end=' ')
+                                        print(mycolors.foreground.blue + "\nsubmitted: ".ljust(12) + mycolors.reset + d['submitted'], end=' ')
 
                                 if ("completed" in y):
                                     if d['completed']:
-                                        print(mycolors.foreground.cyan + "\ncompleted: ".ljust(12) + mycolors.reset + d['completed'], end=' ')
+                                        print(mycolors.foreground.blue + "\ncompleted: ".ljust(12) + mycolors.reset + d['completed'], end=' ')
 
                                 if ("private" in y):
                                     if d['private']:
-                                        print(mycolors.foreground.cyan + "\nprivate: ".ljust(12) + mycolors.reset + d['private'], end=' ')
+                                        print(mycolors.foreground.blue + "\nprivate: ".ljust(12) + mycolors.reset + d['private'], end=' ')
 
                                 for x in triagetext['data'][0].keys():
                                     if (x == "tasks"):
@@ -190,17 +280,17 @@ class TriageExtractor():
                                                     if d['pick']:
                                                         print(mycolors.foreground.purple + "\n\t   pick: ".ljust(13) + mycolors.reset + d['pick'], end=' ')
 
-                                print("\n" + (90 * '-').center(45), end='')
+                                print("\n" + divider(REPORT_WIDTH), end='')
 
                     if (i == "next"):
                         if (triagetext['next'] is not None):
                             print(mycolors.foreground.purple + "\nnext: ".ljust(12) + mycolors.reset + triagetext['next'], end=' ')
 
             printr()
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -217,14 +307,13 @@ class TriageExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "TRIAGE SEARCH REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("TRIAGE SEARCH REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json', 'Authorization': 'Bearer ' + self.TRIAGEAPI})
             triageresponse = requestsession.get(triage + 'samples/' + quote(triagex, safe='') + '/overview.json')
-            triagetext = json.loads(triageresponse.text)
+            triagetext = strip_json_escapes(json.loads(triageresponse.text))
+            add_records('triage', 'triage_summary', triagetext)
 
             if 'error' in triagetext:
                 if triagetext['error'] == "NOT_FOUND":
@@ -541,10 +630,10 @@ class TriageExtractor():
                                                             print(mycolors.reset + (("\n" + "".ljust(21)).join(textwrap.wrap((triagetext['extracted'][k][m][x][p][q]), width=80))), end=' ')
 
             print(mycolors.reset + "\n")
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -581,11 +670,9 @@ class TriageExtractor():
         try:
 
             print("\n")
-            print((mycolors.reset + "TRIAGE SAMPLE SUBMIT REPORT".center(80)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (80 * '-').center(40))
+            print(report_header("TRIAGE SAMPLE SUBMIT REPORT", SUBMIT_REPORT_WIDTH))
 
-            filename = os.path.basename(triagex)
+            filename = re.sub(r'[^A-Za-z0-9._-]', '_', os.path.basename(triagex)) or 'sample'
             
             with open(triagex, 'rb') as myfile:
                 mydata = {
@@ -601,7 +688,8 @@ class TriageExtractor():
                 req = Request('POST', triage + 'samples', data=mybody, headers={"Content-Type": content_type, "Authorization": "Bearer " + self.TRIAGEAPI})
                 requestsession = create_session()
                 triageres = requestsession.send(req.prepare())
-                triagetext = triageres.json()
+                triagetext = strip_json_escapes(triageres.json())
+                add_records('triage', 'triage_sample_submit', triagetext)
 
             if 'error' in triagetext:
 
@@ -632,10 +720,10 @@ class TriageExtractor():
                     print("\n" + mycolors.foreground.blue + "submitted: ".ljust(12) + mycolors.reset + triagetext['submitted'], end=' ')
 
             print(mycolors.reset + "\n")
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -652,9 +740,7 @@ class TriageExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "TRIAGE URL SAMPLE SUBMIT REPORT".center(80)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (80 * '-').center(40))
+            print(report_header("TRIAGE URL SAMPLE SUBMIT REPORT", SUBMIT_REPORT_WIDTH))
 
             mydata = {
                 'kind': 'fetch',
@@ -669,7 +755,8 @@ class TriageExtractor():
                 'Content-Type': 'application/json'
             })
             triageresponse = requestsession.post(triage + 'samples', data=json.dumps(mydata))
-            triagetext = json.loads(triageresponse.text)
+            triagetext = strip_json_escapes(json.loads(triageresponse.text))
+            add_records('triage', 'triage_url_sample_submit', triagetext)
 
             if 'error' in triagetext:
                 if triagetext['error'] == "UNAUTHORIZED":
@@ -699,10 +786,10 @@ class TriageExtractor():
                     print("\n" + mycolors.foreground.blue + "submitted: ".ljust(12) + mycolors.reset + triagetext['submitted'], end=' ')
 
             print(mycolors.reset + "\n")
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -720,15 +807,14 @@ class TriageExtractor():
         try:
 
             print("\n")
-            print((mycolors.reset + "TRIAGE DOWNLOAD REPORT".center(80)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (80 * '-').center(40))
+            print(report_header("TRIAGE DOWNLOAD REPORT", SUBMIT_REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Authorization': 'Bearer ' + self.TRIAGEAPI})
             triageresponse = requestsession.get(triage + 'samples/' + quote(triagex, safe='') + '/sample')
             if (triageresponse.status_code == 404):
-                triagetext = json.loads(triageresponse.text)
+                triagetext = strip_json_escapes(json.loads(triageresponse.text))
+                add_records('triage', 'triage_download', triagetext)
 
             if 'error' in triagetext:
                 if triagetext['error'] == "NOT_FOUND":
@@ -762,10 +848,10 @@ class TriageExtractor():
                 print("\n" + mycolors.foreground.blue + f"Sample downloaded to: {outputpath}" + mycolors.reset, end=' ')
 
             print(mycolors.reset + "\n")
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -782,15 +868,14 @@ class TriageExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "TRIAGE PCAPNG DOWNLOAD REPORT".center(80)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (80 * '-').center(40))
+            print(report_header("TRIAGE PCAPNG DOWNLOAD REPORT", SUBMIT_REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Authorization': 'Bearer ' + self.TRIAGEAPI})
             triageresponse = requestsession.get(triage + 'samples/' + quote(triagex, safe='') + '/behavioral1/dump.pcapng')
             if (triageresponse.status_code == 404):
-                triagetext = json.loads(triageresponse.text)
+                triagetext = strip_json_escapes(json.loads(triageresponse.text))
+                add_records('triage', 'triage_download_pcap', triagetext)
 
             if 'error' in triagetext:
                 if triagetext['error'] == "NOT_FOUND":
@@ -824,10 +909,10 @@ class TriageExtractor():
                 print("\n" + mycolors.foreground.blue + f"PCAP downloaded to: {outputpath}" + mycolors.reset, end=' ')
 
             print(mycolors.reset + "\n")
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -844,14 +929,13 @@ class TriageExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "TRIAGE DYNAMIC REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("TRIAGE DYNAMIC REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json', 'Authorization': 'Bearer ' + self.TRIAGEAPI})
             triageresponse = requestsession.get(triage + 'samples/' + quote(triagex, safe='') + '/behavioral1/report_triage.json')
-            triagetext = json.loads(triageresponse.text)
+            triagetext = strip_json_escapes(json.loads(triageresponse.text))
+            add_records('triage', 'triage_dynamic', triagetext)
 
             if 'error' in triagetext:
                 if triagetext['error'] == "NOT_FOUND":
@@ -1132,9 +1216,9 @@ class TriageExtractor():
                         print(mycolors.reset + "")
 
             print(mycolors.reset + "\n")
-            exit(0)
-        except ValueError as e:
-            print(e)
+            return True
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'Triage'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Tri.age!\n"))
             else:
@@ -1152,7 +1236,7 @@ class TriageExtractor():
             })
             safe_query = quote(hash_value, safe='')
             response = requestsession.get(triage + 'search?query=' + safe_query)
-            search_data = json.loads(response.text)
+            search_data = strip_json_escapes(json.loads(response.text))
             if 'error' in search_data or not search_data.get('data'):
                 return None
             sample_id = search_data['data'][0].get('id', '')
@@ -1161,7 +1245,7 @@ class TriageExtractor():
             summary_resp = requestsession.get(
                 triage + 'samples/' + quote(sample_id, safe='') + '/overview.json'
             )
-            summary_data = json.loads(summary_resp.text)
+            summary_data = strip_json_escapes(json.loads(summary_resp.text))
             if 'error' in summary_data:
                 return None
             return summary_data
@@ -1192,13 +1276,12 @@ class TriageExtractor():
             printr()
             return
 
-        print("\n")
-        print((mycolors.reset + "Triage Batch Hash Check".center(100)), end='')
-        print((mycolors.reset + "".center(28)), end='')
-        print("\n" + (100 * '-').center(50))
+        widths = self._batch_widths(hashes, filenames=[])
+        self._print_batch_title("Triage Batch Hash Check", widths['total'])
+        self._print_batch_header(widths)
 
-        print(mycolors.reset + "\n%-68s %-22s %-8s %s" % ("Hash", "Filename", "Score", "Tags"))
-        print((160 * '-'))
+        found = 0
+        failed = 0
 
         requestsession = create_session()
         requestsession.headers.update({
@@ -1211,13 +1294,15 @@ class TriageExtractor():
                 h = h.strip()
                 safe_query = quote(h, safe='')
                 response = requestsession.get(triage + 'search?query=' + safe_query, timeout=60)
-                search_data = json.loads(response.text)
+                search_data = strip_json_escapes(json.loads(response.text))
+                add_records('triage', 'triage_batchcheck', search_data)
 
                 filename_val = ''
                 score = ''
                 tags = ''
 
                 if not search_data.get('error') and search_data.get('data'):
+                    found = found + 1
                     sample = search_data['data'][0]
                     filename_val = str(sample.get('filename', '')) if sample.get('filename') else ''
 
@@ -1228,7 +1313,8 @@ class TriageExtractor():
                                 triage + 'samples/' + quote(sample_id, safe='') + '/overview.json',
                                 timeout=60
                             )
-                            summary_data = json.loads(summary_resp.text)
+                            summary_data = strip_json_escapes(json.loads(summary_resp.text))
+                            add_records('triage', 'triage_batchcheck', summary_data)
                             if 'error' not in summary_data:
                                 sample_info = summary_data.get('sample', {})
                                 score_val = sample_info.get('score')
@@ -1261,26 +1347,18 @@ class TriageExtractor():
                                                         break
                                         if len(families) >= 1:
                                             break
-                                tags = ', '.join(families[:5])
+                                tags = ', '.join(families[:BATCH_MAX_TAGS])
                         except Exception:
                             pass
 
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.yellow + "%-68s " % h, end='')
-                    print(mycolors.foreground.lightcyan + "%-22s " % filename_val[:20], end='')
-                    print(mycolors.foreground.lightred + "%-8s " % score.center(5), end='')
-                    print(mycolors.foreground.lightgreen + "%s" % tags[:65])
-                else:
-                    print(mycolors.foreground.cyan + "%-68s " % h, end='')
-                    print(mycolors.foreground.purple + "%-22s " % filename_val[:20], end='')
-                    print(mycolors.foreground.red + "%-8s " % score.center(5), end='')
-                    print(mycolors.foreground.blue + "%s" % tags[:65])
+                self._print_batch_row(widths, h, filename_val, score, tags)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-68s error: %s" % (h, str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-68s error: %s" % (h, str(e)))
+                failed = failed + 1
+                print(mycolors.foreground.error(cv.bkg)
+                      + pad(h, widths['hash']) + "error: %s" % str(e) + mycolors.reset)
+
+        self._print_batch_summary(widths, len(hashes), found, failed)
 
         printr()
 
@@ -1315,13 +1393,13 @@ class TriageExtractor():
             printr()
             return
 
-        print("\n")
-        print((mycolors.reset + "Triage Directory Check".center(100)), end='')
-        print((mycolors.reset + "".center(28)), end='')
-        print("\n" + (100 * '-').center(50))
+        widths = self._batch_widths([h for _f, h in files],
+                                    filenames=[f for f, _h in files], filename_first=True)
+        self._print_batch_title("Triage Directory Check", widths['total'])
+        self._print_batch_header(widths)
 
-        print(mycolors.reset + "\n%-44s %-66s %-6s %s" % ("Filename", "Hash", "Score", "Tags"))
-        print((136 * '-'))
+        found = 0
+        failed = 0
 
         requestsession = create_session()
         requestsession.headers.update({
@@ -1333,12 +1411,14 @@ class TriageExtractor():
             try:
                 safe_query = quote(h, safe='')
                 response = requestsession.get(triage + 'search?query=' + safe_query, timeout=60)
-                search_data = json.loads(response.text)
+                search_data = strip_json_escapes(json.loads(response.text))
+                add_records('triage', 'triage_dircheck', search_data)
 
                 score = ''
                 tags = ''
 
                 if not search_data.get('error') and search_data.get('data'):
+                    found = found + 1
                     sample = search_data['data'][0]
                     sample_id = sample.get('id', '')
                     if sample_id:
@@ -1347,7 +1427,8 @@ class TriageExtractor():
                                 triage + 'samples/' + quote(sample_id, safe='') + '/overview.json',
                                 timeout=60
                             )
-                            summary_data = json.loads(summary_resp.text)
+                            summary_data = strip_json_escapes(json.loads(summary_resp.text))
+                            add_records('triage', 'triage_dircheck', summary_data)
                             if 'error' not in summary_data:
                                 sample_info = summary_data.get('sample', {})
                                 score_val = sample_info.get('score')
@@ -1380,25 +1461,18 @@ class TriageExtractor():
                                                         break
                                         if len(families) >= 1:
                                             break
-                                tags = ', '.join(families[:5])
+                                tags = ', '.join(families[:BATCH_MAX_TAGS])
                         except Exception:
                             pass
 
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightgreen + "%-44s " % fname[:42], end='')
-                    print(mycolors.foreground.yellow + "%-66s " % h, end='')
-                    print(mycolors.foreground.lightred + "%-6s " % score.center(4), end='')
-                    print(mycolors.foreground.lightcyan + "%s" % tags)
-                else:
-                    print(mycolors.foreground.blue + "%-44s " % fname[:42], end='')
-                    print(mycolors.foreground.cyan + "%-66s " % h, end='')
-                    print(mycolors.foreground.red + "%-6s " % score.center(4), end='')
-                    print(mycolors.foreground.purple + "%s" % tags)
+                self._print_batch_row(widths, h, fname, score, tags)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-44s error: %s" % (fname[:42], str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-44s error: %s" % (fname[:42], str(e)))
+                failed = failed + 1
+                print(mycolors.foreground.error(cv.bkg)
+                      + pad(fit(fname, widths['filename'] - BATCH_GUTTER), widths['filename'])
+                      + "error: %s" % str(e) + mycolors.reset)
+
+        self._print_batch_summary(widths, len(files), found, failed)
 
         printr()

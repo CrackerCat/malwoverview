@@ -1,11 +1,98 @@
 import malwoverview.modules.configvars as cv
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, strip_terminal_escapes, display_width, pad, fit, bullet, column, report_header, divider
 import requests
 import json
 import os
-from malwoverview.utils.session import create_session
+import stat
+import time
+import zipfile
+from malwoverview.utils.session import create_session, failure_message
 from malwoverview.utils.hash import sha256hash
 from malwoverview.utils.cache import cached
+from malwoverview.utils.output import collector, is_text_output, add_records
+
+REPORT_WIDTH = 100
+
+COL_YARA_HASH = 66
+COL_YARA_FILENAME = 34
+COL_YARA_TYPE = 10
+COL_YARA_SIGNATURE = 20
+COL_YARA_FIRSTSEEN = 21
+YARA_TABLE_WIDTH = COL_YARA_HASH + COL_YARA_FILENAME + COL_YARA_TYPE + COL_YARA_SIGNATURE + COL_YARA_FIRSTSEEN
+
+BATCH_GUTTER = 2
+BATCH_COL_FILENAME = 42
+BATCH_COL_TYPE = 8
+BATCH_COL_SIGNATURE = 17
+BATCH_COL_TAGS = 40
+BATCH_MAX_TAGS = 4
+BATCH_HEADERS = ("Filename", "Hash", "Type", "Signature", "Tags")
+
+YARA_LIMIT_MIN = 1
+YARA_LIMIT_MAX = 1000
+YARA_LIMIT_DEFAULT = 100
+
+YARAIFY_RULES_URL = 'https://yaraify.abuse.ch/yarahub/yaraify-rules.zip'
+YARAIFY_RULES_FILENAME = 'yaraify-rules.zip'
+YARAIFY_RULES_DIRNAME = 'yaraify-rules'
+YARAIFY_REFRESH_INTERVAL = 300
+
+MAX_RULESET_DOWNLOAD_SIZE = 500 * 1024 * 1024
+MAX_RULESET_ENTRIES = 100000
+MAX_RULESET_MEMBERS = 20000
+MAX_RULESET_TOTAL_BYTES = 200 * 1024 * 1024
+MAX_RULESET_MEMBER_BYTES = 8 * 1024 * 1024
+YARA_RULE_EXTENSIONS = ('.yar', '.yara')
+
+
+def _ellipsis(value, width):
+    text = str(value)
+    if display_width(text) <= width:
+        return text
+    if width <= 3:
+        return fit(text, width, marker='')
+    return fit(text, width)
+
+
+def _member_parts(name):
+    return [p for p in name.replace('\\', '/').split('/') if p and p != '.']
+
+
+def _unsafe_member_name(name):
+    if not name:
+        return True
+
+    if any(ord(c) < 32 for c in name):
+        return True
+
+    normalized = name.replace('\\', '/')
+
+    if normalized.startswith('/'):
+        return True
+
+    if len(normalized) > 1 and normalized[1] == ':':
+        return True
+
+    parts = _member_parts(name)
+
+    if not parts:
+        return True
+
+    return any(p == '..' for p in parts)
+
+
+def _inside_directory(root, target):
+    rootn = os.path.normcase(root)
+    targetn = os.path.normcase(target)
+
+    if rootn == targetn:
+        return False
+
+    try:
+        return os.path.commonpath([rootn, targetn]) == rootn
+    except ValueError:
+        return False
+
 
 class BazaarExtractor():
     urlbazaar = 'https://mb-api.abuse.ch/api/v1/'
@@ -28,16 +115,15 @@ class BazaarExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "MALWARE BAZAAR REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("MALWARE BAZAAR REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
             requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
             params = {'query': 'get_taginfo', "tag": bazaarx, "limit": 50}
             bazaarresponse = requestsession.post(bazaar, data=params)
-            bazaartext = json.loads(bazaarresponse.text)
+            bazaartext = strip_json_escapes(json.loads(bazaarresponse.text))
+            add_records('bazaar', 'bazaar_tag', bazaartext)
 
             if bazaartext['query_status'] == "tag_not_found":
                 if (cv.bkg == 1):
@@ -66,7 +152,7 @@ class BazaarExtractor():
                         if (bazaartext['data'] is not None):
                             for d in bazaartext['data']:
                                 y = d.keys()
-                                print("\n" + (90 * '-').center(45), end=' ')
+                                print("\n" + divider(REPORT_WIDTH), end=' ')
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
                                         print(mycolors.foreground.lightcyan + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
@@ -134,7 +220,7 @@ class BazaarExtractor():
                         if (bazaartext['data'] is not None):
                             for d in bazaartext['data']:
                                 y = d.keys()
-                                print("\n" + (90 * '-').center(45), end=' ')
+                                print("\n" + divider(REPORT_WIDTH), end=' ')
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
                                         print(mycolors.foreground.blue + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
@@ -197,10 +283,10 @@ class BazaarExtractor():
                                             print(mycolors.reset + t, end=' ')
 
             printr()
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'MalwareBazaar'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Malware Bazaar!\n"))
             else:
@@ -217,16 +303,15 @@ class BazaarExtractor():
         try:
 
             print("\n")
-            print((mycolors.reset + "MALWARE BAZAAR REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("MALWARE BAZAAR REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
             requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
             params = {'query': 'get_imphash', "imphash": bazaarx, "limit": 50}
             bazaarresponse = requestsession.post(bazaar, data=params)
-            bazaartext = json.loads(bazaarresponse.text)
+            bazaartext = strip_json_escapes(json.loads(bazaarresponse.text))
+            add_records('bazaar', 'bazaar_imphash', bazaartext)
 
             if bazaartext['query_status'] == "imphash_not_found":
                 if (cv.bkg == 1):
@@ -255,7 +340,7 @@ class BazaarExtractor():
                         if (bazaartext['data'] is not None):
                             for d in bazaartext['data']:
                                 y = d.keys()
-                                print("\n" + (90 * '-').center(45), end=' ')
+                                print("\n" + divider(REPORT_WIDTH), end=' ')
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
                                         print(mycolors.foreground.pink + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
@@ -323,7 +408,7 @@ class BazaarExtractor():
                         if (bazaartext['data'] is not None):
                             for d in bazaartext['data']:
                                 y = d.keys()
-                                print("\n" + (90 * '-').center(45), end=' ')
+                                print("\n" + divider(REPORT_WIDTH), end=' ')
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
                                         print(mycolors.foreground.purple + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
@@ -386,10 +471,10 @@ class BazaarExtractor():
                                             print(mycolors.reset + t, end=' ')
 
             printr()
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'MalwareBazaar'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Malware Bazaar!\n"))
             else:
@@ -407,16 +492,15 @@ class BazaarExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "MALWARE BAZAAR REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("MALWARE BAZAAR REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
             requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
             params = {'query': 'get_recent', "selector": bazaarx}
             bazaarresponse = requestsession.post(bazaar, data=params)
-            bazaartext = json.loads(bazaarresponse.text)
+            bazaartext = strip_json_escapes(json.loads(bazaarresponse.text))
+            add_records('bazaar', 'bazaar_lastsamples', bazaartext)
 
             if bazaartext['query_status'] == "unknown_selector":
                 if (cv.bkg == 1):
@@ -438,7 +522,7 @@ class BazaarExtractor():
                         if (bazaartext['data'] is not None):
                             for d in bazaartext['data']:
                                 y = d.keys()
-                                print("\n" + (90 * '-').center(45), end=' ')
+                                print("\n" + divider(REPORT_WIDTH), end=' ')
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
                                         print(mycolors.foreground.yellow + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
@@ -506,73 +590,73 @@ class BazaarExtractor():
                         if (bazaartext['data'] is not None):
                             for d in bazaartext['data']:
                                 y = d.keys()
-                                print("\n" + (90 * '-').center(45), end=' ')
+                                print("\n" + divider(REPORT_WIDTH), end=' ')
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
-                                        print(mycolors.foreground.cyan + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
+                                        print(mycolors.foreground.blue + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
 
                                 if ("sha1_hash" in y):
                                     if d['sha1_hash']:
-                                        print(mycolors.foreground.cyan + "\nsha1_hash: ".ljust(15) + mycolors.reset + d['sha1_hash'], end=' ')
+                                        print(mycolors.foreground.blue + "\nsha1_hash: ".ljust(15) + mycolors.reset + d['sha1_hash'], end=' ')
 
                                 if ("md5_hash" in y):
                                     if d['md5_hash']:
-                                        print(mycolors.foreground.cyan + "\nmd5_hash: ".ljust(15) + mycolors.reset + d['md5_hash'], end=' ')
+                                        print(mycolors.foreground.blue + "\nmd5_hash: ".ljust(15) + mycolors.reset + d['md5_hash'], end=' ')
 
                                 if ("first_seen" in y):
                                     if d['first_seen']:
-                                        print(mycolors.foreground.cyan + "\nfirst_seen: ".ljust(15) + mycolors.reset + d['first_seen'], end=' ')
+                                        print(mycolors.foreground.blue + "\nfirst_seen: ".ljust(15) + mycolors.reset + d['first_seen'], end=' ')
 
                                 if ("last_seen" in y):
                                     if d['last_seen']:
-                                        print(mycolors.foreground.cyan + "\nlast_seen: ".ljust(15) + mycolors.reset + d['last_seen'], end=' ')
+                                        print(mycolors.foreground.blue + "\nlast_seen: ".ljust(15) + mycolors.reset + d['last_seen'], end=' ')
 
                                 if ("file_name" in y):
                                     if d['file_name']:
-                                        print(mycolors.foreground.cyan + "\nfile_name: ".ljust(15) + mycolors.reset + d['file_name'], end=' ')
+                                        print(mycolors.foreground.blue + "\nfile_name: ".ljust(15) + mycolors.reset + d['file_name'], end=' ')
 
                                 if ("file_size" in y):
                                     if d['file_size']:
-                                        print(mycolors.foreground.cyan + "\nfile_size: ".ljust(15) + mycolors.reset + str(d['file_size']) + " bytes", end=' ')
+                                        print(mycolors.foreground.blue + "\nfile_size: ".ljust(15) + mycolors.reset + str(d['file_size']) + " bytes", end=' ')
 
                                 if ("file_type" in y):
                                     if d['file_type']:
-                                        print(mycolors.foreground.cyan + "\nfile_type: ".ljust(15) + mycolors.reset + str(d['file_type']), end=' ')
+                                        print(mycolors.foreground.blue + "\nfile_type: ".ljust(15) + mycolors.reset + str(d['file_type']), end=' ')
 
                                 if ("file_type_mime" in y):
                                     if d['file_type_mime']:
-                                        print(mycolors.foreground.cyan + "\nmime_type: ".ljust(15) + mycolors.reset + str(d['file_type_mime']), end=' ')
+                                        print(mycolors.foreground.blue + "\nmime_type: ".ljust(15) + mycolors.reset + str(d['file_type_mime']), end=' ')
                                 if ("origin_country" in y):
                                     if d['origin_country']:
-                                        print(mycolors.foreground.cyan + "\ncountry: ".ljust(15) + mycolors.reset + d['origin_country'], end=' ')
+                                        print(mycolors.foreground.blue + "\ncountry: ".ljust(15) + mycolors.reset + d['origin_country'], end=' ')
 
                                 if ("imphash" in y):
                                     if d['imphash']:
-                                        print(mycolors.foreground.cyan + "\nimphash: ".ljust(15) + mycolors.reset + d['imphash'], end=' ')
+                                        print(mycolors.foreground.blue + "\nimphash: ".ljust(15) + mycolors.reset + d['imphash'], end=' ')
 
                                 if ("tlsh" in y):
                                     if d['tlsh']:
-                                        print(mycolors.foreground.cyan + "\ntlsh: ".ljust(15) + mycolors.reset + d['tlsh'], end=' ')
+                                        print(mycolors.foreground.blue + "\ntlsh: ".ljust(15) + mycolors.reset + d['tlsh'], end=' ')
 
                                 if ("reporter" in y):
                                     if d['reporter']:
-                                        print(mycolors.foreground.cyan + "\nreporter: ".ljust(15) + mycolors.reset + d['reporter'], end=' ')
+                                        print(mycolors.foreground.blue + "\nreporter: ".ljust(15) + mycolors.reset + d['reporter'], end=' ')
 
                                 if ("signature" in y):
                                     if d['signature']:
-                                        print(mycolors.foreground.cyan + "\nsignature: ".ljust(15) + mycolors.reset + d['signature'], end=' ')
+                                        print(mycolors.foreground.blue + "\nsignature: ".ljust(15) + mycolors.reset + d['signature'], end=' ')
 
                                 if ("tags" in y):
                                     if d['tags']:
-                                        print(mycolors.foreground.cyan + "\ntags: ".ljust(15), end='')
+                                        print(mycolors.foreground.blue + "\ntags: ".ljust(15), end='')
                                         for t in d['tags']:
                                             print(mycolors.reset + t, end=' ')
 
             printr()
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'MalwareBazaar'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Malware Bazaar!\n"))
             else:
@@ -591,9 +675,7 @@ class BazaarExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "MALWARE BAZAAR REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("MALWARE BAZAAR REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/gzip'})
@@ -629,6 +711,7 @@ class BazaarExtractor():
             outputpath = os.path.join(cv.output_dir, safe_filename)
             with open(outputpath, 'wb') as f:
                 f.write(content)
+                collector.add({'service': 'bazaar', 'query_type': 'bazaar_download', 'query': bazaarx, 'file': outputpath, 'size': os.path.getsize(outputpath)})
             final = f'\nSample downloaded to: {outputpath}'
 
             if (cv.bkg == 1):
@@ -637,10 +720,10 @@ class BazaarExtractor():
                 print((mycolors.foreground.green + final + "\n"))
 
             printr()
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'MalwareBazaar'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "Error while connecting to Malware Bazaar!\n"))
             else:
@@ -658,16 +741,15 @@ class BazaarExtractor():
 
         try:
             print("\n")
-            print((mycolors.reset + "MALWARE BAZAAR REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("MALWARE BAZAAR REPORT", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'accept': 'application/json'})
             requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
             params = {'query': 'get_info', "hash": bazaarx}
             bazaarresponse = requestsession.post(bazaar, data=params)
-            bazaartext = json.loads(bazaarresponse.text)
+            bazaartext = strip_json_escapes(json.loads(bazaarresponse.text))
+            add_records('bazaar', 'bazaar_hash', bazaartext)
 
             if bazaartext['query_status'] == "hash_not_found":
                 if (cv.bkg == 1):
@@ -691,76 +773,83 @@ class BazaarExtractor():
                                 y = d.keys()
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
-                                        print(mycolors.foreground.lightcyan + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
 
                                 if ("sha1_hash" in y):
                                     if d['sha1_hash']:
-                                        print(mycolors.foreground.lightcyan + "\nsha1_hash: ".ljust(15) + mycolors.reset + d['sha1_hash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nsha1_hash: ".ljust(15) + mycolors.reset + d['sha1_hash'], end=' ')
 
                                 if ("md5_hash" in y):
                                     if d['md5_hash']:
-                                        print(mycolors.foreground.lightcyan + "\nmd5_hash: ".ljust(15) + mycolors.reset + d['md5_hash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nmd5_hash: ".ljust(15) + mycolors.reset + d['md5_hash'], end=' ')
 
                                 if ("first_seen" in y):
                                     if d['first_seen']:
-                                        print(mycolors.foreground.lightcyan + "\nfirst_seen: ".ljust(15) + mycolors.reset + d['first_seen'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfirst_seen: ".ljust(15) + mycolors.reset + d['first_seen'], end=' ')
 
                                 if ("last_seen" in y):
                                     if d['last_seen']:
-                                        print(mycolors.foreground.lightcyan + "\nlast_seen: ".ljust(15) + mycolors.reset + d['last_seen'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nlast_seen: ".ljust(15) + mycolors.reset + d['last_seen'], end=' ')
 
                                 if ("file_name" in y):
                                     if d['file_name']:
-                                        print(mycolors.foreground.lightcyan + "\nfile_name: ".ljust(15) + mycolors.reset + d['file_name'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfile_name: ".ljust(15) + mycolors.reset + d['file_name'], end=' ')
 
                                 if ("file_size" in y):
                                     if d['file_size']:
-                                        print(mycolors.foreground.lightcyan + "\nfile_size: ".ljust(15) + mycolors.reset + str(d['file_size']) + " bytes", end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfile_size: ".ljust(15) + mycolors.reset + str(d['file_size']) + " bytes", end=' ')
 
                                 if ("file_type" in y):
                                     if d['file_type']:
-                                        print(mycolors.foreground.lightcyan + "\nfile_type: ".ljust(15) + mycolors.reset + str(d['file_type']), end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfile_type: ".ljust(15) + mycolors.reset + str(d['file_type']), end=' ')
 
                                 if ("file_type_mime" in y):
                                     if d['file_type_mime']:
-                                        print(mycolors.foreground.lightcyan + "\nmime_type: ".ljust(15) + mycolors.reset + str(d['file_type_mime']), end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nmime_type: ".ljust(15) + mycolors.reset + str(d['file_type_mime']), end=' ')
                                 if ("origin_country" in y):
                                     if d['origin_country']:
-                                        print(mycolors.foreground.lightcyan + "\ncountry: ".ljust(15) + mycolors.reset + d['origin_country'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ncountry: ".ljust(15) + mycolors.reset + d['origin_country'], end=' ')
 
                                 if ("imphash" in y):
                                     if d['imphash']:
-                                        print(mycolors.foreground.lightcyan + "\nimphash: ".ljust(15) + mycolors.reset + d['imphash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nimphash: ".ljust(15) + mycolors.reset + d['imphash'], end=' ')
 
                                 if ("tlsh" in y):
                                     if d['tlsh']:
-                                        print(mycolors.foreground.lightcyan + "\ntlsh: ".ljust(15) + mycolors.reset + d['tlsh'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ntlsh: ".ljust(15) + mycolors.reset + d['tlsh'], end=' ')
 
                                 if ("comment" in y):
                                     if d['comment']:
-                                        print(mycolors.foreground.lightcyan + "\ncomments: ".ljust(15) + mycolors.reset, end='')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ncomments: ".ljust(15) + mycolors.reset, end='')
                                         s = d['comment'].split('\n')
                                         for n in range(len(s)):
                                             print("\n".ljust(15) + s[n], end=' ')
 
                                 if ("reporter" in y):
                                     if d['reporter']:
-                                        print(mycolors.foreground.lightcyan + "\nreporter: ".ljust(15) + mycolors.reset + d['reporter'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nreporter: ".ljust(15) + mycolors.reset + d['reporter'], end=' ')
 
                                 if ("oleinformation" in y):
-                                    print(mycolors.foreground.lightcyan + "\noleinformation: ".ljust(15), end='')
+                                    print(mycolors.foreground.info(cv.bkg) + "\noleinformation: ".ljust(15), end='')
                                     for t in d['oleinformation']:
                                         print(mycolors.reset + t, end=' ')
 
                                 if ("delivery_method" in y):
                                     if d['delivery_method']:
-                                        print(mycolors.foreground.lightcyan + "\ndelivery: ".ljust(15) + mycolors.reset + d['delivery_method'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ndelivery: ".ljust(15) + mycolors.reset + d['delivery_method'], end=' ')
 
                                 if ("tags" in y):
                                     if d['tags']:
-                                        print(mycolors.foreground.lightcyan + "\ntags: ".ljust(15), end='')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ntags: ".ljust(15), end='')
                                         for t in d['tags']:
                                             print(mycolors.reset + t, end=' ')
+
+                                if ("yara_rules" in y):
+                                    if d['yara_rules']:
+                                        print(mycolors.foreground.info(cv.bkg) + "\nyara rules: ".ljust(15), end='')
+                                        for rule in d['yara_rules']:
+                                            if isinstance(rule, dict) and rule.get('rule_name'):
+                                                print(mycolors.reset + "\n".ljust(15) + str(rule['rule_name']), end='')
 
                                 if ("file_information" in y):
                                     if (d['file_information'] is not None):
@@ -817,76 +906,83 @@ class BazaarExtractor():
                                 y = d.keys()
                                 if ("sha256_hash" in y):
                                     if d['sha256_hash']:
-                                        print(mycolors.foreground.green + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nsha256_hash: ".ljust(15) + mycolors.reset + d['sha256_hash'], end=' ')
 
                                 if ("sha1_hash" in y):
                                     if d['sha1_hash']:
-                                        print(mycolors.foreground.green + "\nsha1_hash: ".ljust(15) + mycolors.reset + d['sha1_hash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nsha1_hash: ".ljust(15) + mycolors.reset + d['sha1_hash'], end=' ')
 
                                 if ("md5_hash" in y):
                                     if d['md5_hash']:
-                                        print(mycolors.foreground.green + "\nmd5_hash: ".ljust(15) + mycolors.reset + d['md5_hash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nmd5_hash: ".ljust(15) + mycolors.reset + d['md5_hash'], end=' ')
 
                                 if ("first_seen" in y):
                                     if d['first_seen']:
-                                        print(mycolors.foreground.green + "\nfirst_seen: ".ljust(15) + mycolors.reset + d['first_seen'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfirst_seen: ".ljust(15) + mycolors.reset + d['first_seen'], end=' ')
 
                                 if ("last_seen" in y):
                                     if d['last_seen']:
-                                        print(mycolors.foreground.green + "\nlast_seen: ".ljust(15) + mycolors.reset + d['last_seen'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nlast_seen: ".ljust(15) + mycolors.reset + d['last_seen'], end=' ')
 
                                 if ("file_name" in y):
                                     if d['file_name']:
-                                        print(mycolors.foreground.green + "\nfile_name: ".ljust(15) + mycolors.reset + d['file_name'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfile_name: ".ljust(15) + mycolors.reset + d['file_name'], end=' ')
 
                                 if ("file_size" in y):
                                     if d['file_size']:
-                                        print(mycolors.foreground.green + "\nfile_size: ".ljust(15) + mycolors.reset + str(d['file_size']) + " bytes", end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfile_size: ".ljust(15) + mycolors.reset + str(d['file_size']) + " bytes", end=' ')
 
                                 if ("file_type" in y):
                                     if d['file_type']:
-                                        print(mycolors.foreground.green + "\nfile_type: ".ljust(15) + mycolors.reset + str(d['file_type']), end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nfile_type: ".ljust(15) + mycolors.reset + str(d['file_type']), end=' ')
 
                                 if ("file_type_mime" in y):
                                     if d['file_type_mime']:
-                                        print(mycolors.foreground.green + "\nmime_type: ".ljust(15) + mycolors.reset + str(d['file_type_mime']), end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nmime_type: ".ljust(15) + mycolors.reset + str(d['file_type_mime']), end=' ')
                                 if ("origin_country" in y):
                                     if d['origin_country']:
-                                        print(mycolors.foreground.green + "\ncountry: ".ljust(15) + mycolors.reset + d['origin_country'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ncountry: ".ljust(15) + mycolors.reset + d['origin_country'], end=' ')
 
                                 if ("imphash" in y):
                                     if d['imphash']:
-                                        print(mycolors.foreground.green + "\nimphash: ".ljust(15) + mycolors.reset + d['imphash'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nimphash: ".ljust(15) + mycolors.reset + d['imphash'], end=' ')
 
                                 if ("tlsh" in y):
                                     if d['tlsh']:
-                                        print(mycolors.foreground.green + "\ntlsh: ".ljust(15) + mycolors.reset + d['tlsh'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ntlsh: ".ljust(15) + mycolors.reset + d['tlsh'], end=' ')
 
                                 if ("comment" in y):
                                     if d['comment']:
-                                        print(mycolors.foreground.green + "\ncomments: ".ljust(15) + mycolors.reset, end='')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ncomments: ".ljust(15) + mycolors.reset, end='')
                                         s = d['comment'].split('\n')
                                         for n in range(len(s)):
                                             print("\n".ljust(15) + s[n], end=' ')
 
                                 if ("reporter" in y):
                                     if d['reporter']:
-                                        print(mycolors.foreground.green + "\nreporter: ".ljust(15) + mycolors.reset + d['reporter'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\nreporter: ".ljust(15) + mycolors.reset + d['reporter'], end=' ')
 
                                 if ("oleinformation" in y):
-                                    print(mycolors.foreground.green + "\noleinformation: ".ljust(15), end='')
+                                    print(mycolors.foreground.info(cv.bkg) + "\noleinformation: ".ljust(15), end='')
                                     for t in d['oleinformation']:
                                         print(mycolors.reset + t, end=' ')
 
                                 if ("delivery_method" in y):
                                     if d['delivery_method']:
-                                        print(mycolors.foreground.green + "\ndelivery: ".ljust(15) + mycolors.reset + d['delivery_method'], end=' ')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ndelivery: ".ljust(15) + mycolors.reset + d['delivery_method'], end=' ')
 
                                 if ("tags" in y):
                                     if d['tags']:
-                                        print(mycolors.foreground.green + "\ntags: ".ljust(15), end='')
+                                        print(mycolors.foreground.info(cv.bkg) + "\ntags: ".ljust(15), end='')
                                         for t in d['tags']:
                                             print(mycolors.reset + t, end=' ')
+
+                                if ("yara_rules" in y):
+                                    if d['yara_rules']:
+                                        print(mycolors.foreground.info(cv.bkg) + "\nyara rules: ".ljust(15), end='')
+                                        for rule in d['yara_rules']:
+                                            if isinstance(rule, dict) and rule.get('rule_name'):
+                                                print(mycolors.reset + "\n".ljust(15) + str(rule['rule_name']), end='')
 
                                 if ("file_information" in y):
                                     if (d['file_information'] is not None):
@@ -936,15 +1032,70 @@ class BazaarExtractor():
                                                             print(mycolors.reset + "".ljust(14) + m['rule'])
 
             printr()
-            exit(0)
+            return True
 
-        except ValueError as e:
-            print(e)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            print(failure_message(e, 'MalwareBazaar'))
             if (cv.bkg == 1):
                 print((mycolors.foreground.lightred + "\nError while connecting to Malware Bazaar!\n"))
             else:
                 print((mycolors.foreground.lightred + "\nError while connecting to Malware Bazaar!\n"))
             printr()
+
+    def _batch_widths(self, hashes, filenames=None):
+        widths = {}
+        keys = []
+        if filenames is not None:
+            widths['filename'] = column("Filename", filenames, cap=BATCH_COL_FILENAME,
+                                        gutter=BATCH_GUTTER)
+            keys.append('filename')
+        widths['hash'] = column("Hash", hashes, gutter=BATCH_GUTTER)
+        widths['type'] = max(len("Type"), BATCH_COL_TYPE) + BATCH_GUTTER
+        widths['signature'] = max(len("Signature"), BATCH_COL_SIGNATURE) + BATCH_GUTTER
+        widths['tags'] = max(len("Tags"), BATCH_COL_TAGS)
+        keys.extend(['hash', 'type', 'signature', 'tags'])
+        widths['total'] = sum(widths[key] for key in keys)
+        widths['keys'] = keys
+        return widths
+
+    def _print_batch_header(self, widths):
+        structure = mycolors.foreground.neutral(cv.bkg)
+        headers = {'filename': "Filename", 'hash': "Hash", 'type': "Type",
+                   'signature': "Signature", 'tags': "Tags"}
+        print()
+        print(structure
+              + "".join(pad(headers[key], widths[key]) for key in widths['keys'])
+              + mycolors.reset)
+        print(structure + (widths['total'] * '-') + mycolors.reset)
+
+    def _print_batch_row(self, widths, hash_value, file_type, signature, tags, filename=None):
+        line = ''
+        if 'filename' in widths['keys']:
+            line = (mycolors.foreground.info(cv.bkg)
+                    + pad(fit(filename, widths['filename'] - BATCH_GUTTER), widths['filename']))
+        print(
+            line
+            + mycolors.foreground.accent(cv.bkg) + pad(hash_value, widths['hash'])
+            + mycolors.foreground.ok(cv.bkg) + pad(fit(file_type or 'n/a', widths['type'] - BATCH_GUTTER), widths['type'])
+            + mycolors.foreground.error(cv.bkg) + pad(fit(signature or 'n/a', widths['signature'] - BATCH_GUTTER), widths['signature'])
+            + mycolors.foreground.warning(cv.bkg) + fit(tags or 'n/a', widths['tags'])
+            + mycolors.reset
+        )
+
+    def _print_batch_summary(self, widths, checked, found, failed):
+        structure = mycolors.foreground.neutral(cv.bkg)
+        counts = "%d hash(es) checked: %d found, %d not found" % (checked, found, checked - found - failed)
+        if failed:
+            counts = counts + ", %d not checked" % failed
+        print()
+        print(bullet(counts + ".", widths['total'], structure))
+        if found < checked:
+            print(bullet("not found only means the sample is unknown to MalwareBazaar. It is not a "
+                         "verdict that the file is clean.", widths['total'], structure))
+        if found:
+            print(bullet("Tags shows at most the first %d MalwareBazaar tags for a sample; list "
+                         "every sample carrying one of them with -b 2." % BATCH_MAX_TAGS,
+                         widths['total'], structure))
 
     def bazaar_batchcheck(self, filename):
         bazaar = 'https://mb-api.abuse.ch/api/v1/'
@@ -970,46 +1121,43 @@ class BazaarExtractor():
             printr()
             return
 
-        print(mycolors.reset + "\n%-66s %-6s %-11s %s" % ("Hash", "Type", "Signature", "Tags"))
-        print((110 * '-'))
+        widths = self._batch_widths(hashes)
+        self._print_batch_header(widths)
 
         requestsession = create_session()
         requestsession.headers.update({'accept': 'application/json'})
         requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
 
+        found = 0
+        failed = 0
+
         for h in hashes:
             try:
                 params = {'query': 'get_info', 'hash': h}
                 response = requestsession.post(bazaar, data=params, timeout=60)
-                bazaartext = json.loads(response.text)
+                bazaartext = strip_json_escapes(json.loads(response.text))
+                add_records('bazaar', 'bazaar_batchcheck', bazaartext)
 
                 file_type = ''
                 signature = ''
                 tags = ''
 
                 if bazaartext.get('query_status') == 'ok' and bazaartext.get('data'):
+                    found = found + 1
                     sample = bazaartext['data'][0]
                     file_type = str(sample.get('file_type', '')) if sample.get('file_type') else ''
                     signature = str(sample.get('signature', '')) if sample.get('signature') else ''
                     tags_list = sample.get('tags', [])
-                    tags = ', '.join(tags_list[:4]) if tags_list else ''
+                    tags = ', '.join(tags_list[:BATCH_MAX_TAGS]) if tags_list else ''
 
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.yellow + "%-66s " % h, end='')
-                    print(mycolors.foreground.lightcyan + "%-6s " % file_type, end='')
-                    print(mycolors.foreground.lightred + "%-11s " % signature, end='')
-                    print(mycolors.foreground.pink + "%s" % tags)
-                else:
-                    print(mycolors.foreground.cyan + "%-66s " % h, end='')
-                    print(mycolors.foreground.blue + "%-6s " % file_type, end='')
-                    print(mycolors.foreground.red + "%-11s " % signature, end='')
-                    print(mycolors.foreground.purple + "%s" % tags)
+                self._print_batch_row(widths, h, file_type, signature, tags)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-66s error: %s" % (h, str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-66s error: %s" % (h, str(e)))
+                failed = failed + 1
+                print(mycolors.foreground.error(cv.bkg)
+                      + pad(h, widths['hash']) + "error: %s" % str(e) + mycolors.reset)
+
+        self._print_batch_summary(widths, len(hashes), found, failed)
 
         printr()
 
@@ -1044,50 +1192,468 @@ class BazaarExtractor():
             printr()
             return
 
-        print(mycolors.reset + "\n%-42s %-66s %-6s %-11s %s" % ("Filename", "Hash", "Type", "Signature", "Tags"))
-        print((150 * '-'))
+        widths = self._batch_widths([h for _f, h in files], filenames=[f for f, _h in files])
+        self._print_batch_header(widths)
 
         requestsession = create_session()
         requestsession.headers.update({'accept': 'application/json'})
         requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
 
+        found = 0
+        failed = 0
+
         for fname, h in files:
             try:
                 params = {'query': 'get_info', 'hash': h}
                 response = requestsession.post(bazaar, data=params, timeout=60)
-                bazaartext = json.loads(response.text)
+                bazaartext = strip_json_escapes(json.loads(response.text))
+                add_records('bazaar', 'bazaar_dircheck', bazaartext)
 
                 file_type = ''
                 signature = ''
                 tags = ''
 
                 if bazaartext.get('query_status') == 'ok' and bazaartext.get('data'):
+                    found = found + 1
                     sample = bazaartext['data'][0]
                     file_type = str(sample.get('file_type', '')) if sample.get('file_type') else ''
                     signature = str(sample.get('signature', '')) if sample.get('signature') else ''
                     tags_list = sample.get('tags', [])
-                    tags = ', '.join(tags_list[:4]) if tags_list else ''
+                    tags = ', '.join(tags_list[:BATCH_MAX_TAGS]) if tags_list else ''
 
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightgreen + "%-42s " % fname[:40], end='')
-                    print(mycolors.foreground.yellow + "%-66s " % h, end='')
-                    print(mycolors.foreground.lightcyan + "%-6s " % file_type, end='')
-                    print(mycolors.foreground.lightred + "%-11s " % signature, end='')
-                    print(mycolors.foreground.pink + "%s" % tags)
-                else:
-                    print(mycolors.foreground.blue + "%-42s " % fname[:40], end='')
-                    print(mycolors.foreground.cyan + "%-66s " % h, end='')
-                    print(mycolors.foreground.blue + "%-6s " % file_type, end='')
-                    print(mycolors.foreground.red + "%-11s " % signature, end='')
-                    print(mycolors.foreground.purple + "%s" % tags)
+                self._print_batch_row(widths, h, file_type, signature, tags, filename=fname)
 
             except Exception as e:
-                if (cv.bkg == 1):
-                    print(mycolors.foreground.lightred + "%-42s error: %s" % (fname[:40], str(e)))
-                else:
-                    print(mycolors.foreground.red + "%-42s error: %s" % (fname[:40], str(e)))
+                failed = failed + 1
+                print(mycolors.foreground.error(cv.bkg)
+                      + pad(fit(fname, widths['filename'] - BATCH_GUTTER), widths['filename'])
+                      + "error: %s" % str(e) + mycolors.reset)
+
+        self._print_batch_summary(widths, len(files), found, failed)
 
         printr()
+
+    def bazaar_yara(self, bazaarx, limit=YARA_LIMIT_DEFAULT):
+        bazaar = BazaarExtractor.urlbazaar
+
+        self.requestBAZAARAPI()
+
+        try:
+            requested = int(limit)
+        except (TypeError, ValueError):
+            requested = YARA_LIMIT_DEFAULT
+
+        clamped = max(YARA_LIMIT_MIN, min(YARA_LIMIT_MAX, requested))
+
+        if is_text_output():
+            print("\n")
+            print(mycolors.reset + "MALWARE BAZAAR YARA REPORT".center(YARA_TABLE_WIDTH))
+            print(mycolors.foreground.neutral(cv.bkg) + (YARA_TABLE_WIDTH * '-') + mycolors.reset)
+
+            if clamped != requested:
+                print(mycolors.foreground.error(cv.bkg) + "\nThe informed limit (%d) is out of range and was clamped to %d (valid range: %d-%d).\n" % (requested, clamped, YARA_LIMIT_MIN, YARA_LIMIT_MAX) + mycolors.reset)
+
+        try:
+            requestsession = create_session()
+            requestsession.headers.update({'accept': 'application/json'})
+            requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
+            params = {'query': 'get_yarainfo', 'yara_rule': bazaarx, 'limit': clamped}
+            bazaarresponse = requestsession.post(bazaar, data=params, timeout=60)
+            bazaartext = strip_json_escapes(json.loads(bazaarresponse.text))
+        except ValueError:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nError while connecting to Malware Bazaar!\n" + mycolors.reset)
+            printr()
+            return
+        except Exception as e:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nError while connecting to Malware Bazaar: %s\n" % str(e) + mycolors.reset)
+            printr()
+            return
+
+        status = bazaartext.get('query_status', '') if isinstance(bazaartext, dict) else ''
+
+        if status != 'ok':
+            messages = {
+                'no_results': "Your query yield no results!",
+                'yara_rule_not_found': "The provided YARA rule name was not found!",
+                'illegal_yara_rule': "The provided YARA rule name is not valid!",
+                'no_yara_rule_provided': "You didn't provide a YARA rule name!",
+                'illegal_limit': "The provided limit is not valid!",
+                'illegal_parameter': "The query was refused because of an illegal parameter!",
+                'unauthenticated': "Your Malware Bazaar Auth-Key was refused!",
+                'http_post_expected': "The Malware Bazaar API expects a POST request!"
+            }
+            message = messages.get(status, "The Malware Bazaar API returned an unexpected status: %s" % (status if status else 'unknown'))
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\n" + message + "\n" + mycolors.reset)
+            printr()
+            return
+
+        data = bazaartext.get('data') or []
+
+        if not data:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nYour query yield no results!\n" + mycolors.reset)
+            printr()
+            return
+
+        if is_text_output():
+            structure = mycolors.foreground.neutral(cv.bkg)
+            print("")
+            print(structure + "Sha256 Hash".ljust(COL_YARA_HASH) + "File Name".ljust(COL_YARA_FILENAME) + "Type".ljust(COL_YARA_TYPE) + "Signature".ljust(COL_YARA_SIGNATURE) + "First Seen")
+            print(structure + (YARA_TABLE_WIDTH * '-') + mycolors.reset)
+
+        for d in data:
+            if not isinstance(d, dict):
+                continue
+
+            sha256_hash = str(d.get('sha256_hash') or '')[:64]
+            file_name = str(d.get('file_name') or '')
+            file_type = str(d.get('file_type') or '')
+            signature = str(d.get('signature') or '')
+            first_seen = str(d.get('first_seen') or '')
+            tags = d.get('tags')
+
+            record = {
+                'yara_rule': bazaarx,
+                'sha256_hash': sha256_hash,
+                'sha1_hash': str(d.get('sha1_hash') or ''),
+                'md5_hash': str(d.get('md5_hash') or ''),
+                'file_name': file_name,
+                'file_size': d.get('file_size', ''),
+                'file_type': file_type,
+                'file_type_mime': str(d.get('file_type_mime') or ''),
+                'file_format': str(d.get('file_format') or ''),
+                'file_arch': str(d.get('file_arch') or ''),
+                'signature': signature,
+                'reporter': str(d.get('reporter') or ''),
+                'imphash': str(d.get('imphash') or ''),
+                'tlsh': str(d.get('tlsh') or ''),
+                'ssdeep': str(d.get('ssdeep') or ''),
+                'first_seen': first_seen,
+                'last_seen': str(d.get('last_seen') or ''),
+                'tags': ', '.join(str(t) for t in tags) if isinstance(tags, list) else str(tags or '')
+            }
+            collector.add(record)
+
+            if is_text_output():
+                if (cv.bkg == 1):
+                    print(mycolors.foreground.yellow + pad(sha256_hash, COL_YARA_HASH), end='')
+                    print(mycolors.foreground.lightgreen + pad(_ellipsis(file_name, COL_YARA_FILENAME - 2), COL_YARA_FILENAME), end='')
+                    print(mycolors.foreground.lightcyan + pad(_ellipsis(file_type, COL_YARA_TYPE - 2), COL_YARA_TYPE), end='')
+                    print(mycolors.foreground.lightred + pad(_ellipsis(signature, COL_YARA_SIGNATURE - 2), COL_YARA_SIGNATURE), end='')
+                    print(mycolors.foreground.pink + _ellipsis(first_seen, COL_YARA_FIRSTSEEN))
+                else:
+                    print(mycolors.foreground.blue + pad(sha256_hash, COL_YARA_HASH), end='')
+                    print(mycolors.foreground.blue + pad(_ellipsis(file_name, COL_YARA_FILENAME - 2), COL_YARA_FILENAME), end='')
+                    print(mycolors.foreground.blue + pad(_ellipsis(file_type, COL_YARA_TYPE - 2), COL_YARA_TYPE), end='')
+                    print(mycolors.foreground.red + pad(_ellipsis(signature, COL_YARA_SIGNATURE - 2), COL_YARA_SIGNATURE), end='')
+                    print(mycolors.foreground.purple + _ellipsis(first_seen, COL_YARA_FIRSTSEEN))
+
+        if is_text_output():
+            print("")
+            print(bullet("%d sample(s) matched the YARA rule '%s' (limit: %d)."
+                         % (len(data), bazaarx, clamped), YARA_TABLE_WIDTH))
+
+        printr()
+
+    def bazaar_yaradownload(self, force=False):
+        self.requestBAZAARAPI()
+        outputpath = os.path.join(cv.output_dir, YARAIFY_RULES_FILENAME)
+
+        if is_text_output():
+            print("\n")
+            print(report_header("YARAIFY RULESET DOWNLOAD", REPORT_WIDTH))
+
+        if not force and os.path.isfile(outputpath):
+            try:
+                age = int(time.time() - os.path.getmtime(outputpath))
+            except OSError:
+                age = YARAIFY_REFRESH_INTERVAL
+
+            if age < YARAIFY_REFRESH_INTERVAL:
+                try:
+                    localsize = os.path.getsize(outputpath)
+                except OSError:
+                    localsize = 0
+
+                collector.add({
+                    'ruleset_url': YARAIFY_RULES_URL,
+                    'ruleset_path': outputpath,
+                    'ruleset_size': localsize,
+                    'downloaded': False
+                })
+
+                if is_text_output():
+                    print(mycolors.foreground.success(cv.bkg) + "\nThe YARAify ruleset is regenerated every %d seconds and the local copy is only %d second(s) old.\nReusing: %s\n" % (YARAIFY_REFRESH_INTERVAL, age, outputpath) + mycolors.reset)
+
+                printr()
+                return outputpath
+
+        written = 0
+
+        try:
+            requestsession = create_session()
+            requestsession.headers.update({'accept': 'application/zip'})
+            requestsession.headers.update({'Auth-Key': self.BAZAARAPI})
+            response = requestsession.get(YARAIFY_RULES_URL, allow_redirects=False, stream=True, timeout=120)
+
+            if response.status_code in (301, 302, 303, 307, 308):
+                if is_text_output():
+                    print(mycolors.foreground.error(cv.bkg) + "\nThe YARAify ruleset endpoint redirected to %s. The abuse.ch Auth-Key was most likely refused.\n" % response.headers.get('Location', 'an unknown location') + mycolors.reset)
+                printr()
+                return None
+
+            if response.status_code in (401, 403):
+                if is_text_output():
+                    print(mycolors.foreground.error(cv.bkg) + "\nThe YARAify ruleset download was denied (HTTP %d). An abuse.ch Auth-Key might be required for this endpoint.\n" % response.status_code + mycolors.reset)
+                printr()
+                return None
+
+            if response.status_code != 200:
+                if is_text_output():
+                    print(mycolors.foreground.error(cv.bkg) + "\nThe YARAify ruleset could not be downloaded (HTTP %d).\n" % response.status_code + mycolors.reset)
+                printr()
+                return None
+
+            toolarge = False
+
+            with open(outputpath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        written += len(chunk)
+                        if written > MAX_RULESET_DOWNLOAD_SIZE:
+                            toolarge = True
+                            break
+                        f.write(chunk)
+
+            if toolarge:
+                try:
+                    os.remove(outputpath)
+                except OSError:
+                    pass
+                if is_text_output():
+                    print(mycolors.foreground.error(cv.bkg) + "\nError: Ruleset too large (>%dMB). Download aborted.\n" % (MAX_RULESET_DOWNLOAD_SIZE // (1024 * 1024)) + mycolors.reset)
+                printr()
+                return None
+
+        except Exception as e:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nError while downloading the YARAify ruleset: %s\n" % str(e) + mycolors.reset)
+            printr()
+            return None
+
+        if written == 0 or not zipfile.is_zipfile(outputpath):
+            try:
+                os.remove(outputpath)
+            except OSError:
+                pass
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nThe downloaded YARAify ruleset is empty or is not a valid zip archive.\n" + mycolors.reset)
+            printr()
+            return None
+
+        collector.add({
+            'ruleset_url': YARAIFY_RULES_URL,
+            'ruleset_path': outputpath,
+            'ruleset_size': written,
+            'downloaded': True
+        })
+
+        if is_text_output():
+            print(mycolors.foreground.success(cv.bkg) + "\nYARAify ruleset (%d bytes) downloaded to: %s\n" % (written, outputpath) + mycolors.reset)
+
+        printr()
+        return outputpath
+
+    def bazaar_yaraextract(self, zippath=None, destdir=None):
+        if not zippath:
+            zippath = os.path.join(cv.output_dir, YARAIFY_RULES_FILENAME)
+
+        if not destdir:
+            destdir = os.path.join(cv.output_dir, YARAIFY_RULES_DIRNAME)
+
+        if is_text_output():
+            print("\n")
+            print(report_header("YARAIFY RULESET EXTRACTION", REPORT_WIDTH))
+
+        if not os.path.isfile(zippath):
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nRuleset archive not found: %s\n" % zippath + mycolors.reset)
+            printr()
+            return None
+
+        if not zipfile.is_zipfile(zippath):
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nNot a valid zip archive: %s\n" % zippath + mycolors.reset)
+            printr()
+            return None
+
+        try:
+            os.makedirs(destdir, exist_ok=True)
+        except OSError as e:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nThe rules directory could not be created: %s (%s)\n" % (destdir, str(e)) + mycolors.reset)
+            printr()
+            return None
+
+        destroot = os.path.realpath(destdir)
+
+        extracted = 0
+        totalbytes = 0
+        inspected = 0
+        skippednotrule = 0
+        skippeddirs = 0
+        rejected = []
+
+        try:
+            with zipfile.ZipFile(zippath, 'r') as zf:
+                for info in zf.infolist():
+                    inspected += 1
+
+                    if inspected > MAX_RULESET_ENTRIES:
+                        rejected.append(('<archive>', 'archive entry cap of %d reached' % MAX_RULESET_ENTRIES))
+                        break
+
+                    name = strip_terminal_escapes(info.filename) or '<unprintable name>'
+
+                    if info.is_dir() or info.filename.endswith('/') or info.filename.endswith('\\'):
+                        skippeddirs += 1
+                        continue
+
+                    if stat.S_ISLNK(info.external_attr >> 16):
+                        rejected.append((name, 'symlink entry'))
+                        continue
+
+                    if _unsafe_member_name(info.filename):
+                        rejected.append((name, 'absolute path, path traversal or control character'))
+                        continue
+
+                    if not info.filename.lower().endswith(YARA_RULE_EXTENSIONS):
+                        skippednotrule += 1
+                        continue
+
+                    target = os.path.realpath(os.path.join(destroot, *_member_parts(info.filename)))
+
+                    if not _inside_directory(destroot, target):
+                        rejected.append((name, 'resolves outside the rules directory'))
+                        continue
+
+                    if extracted >= MAX_RULESET_MEMBERS:
+                        rejected.append((name, 'member cap of %d reached' % MAX_RULESET_MEMBERS))
+                        break
+
+                    if info.file_size > MAX_RULESET_MEMBER_BYTES:
+                        rejected.append((name, 'declared size of %d bytes exceeds the per-member cap of %d bytes' % (info.file_size, MAX_RULESET_MEMBER_BYTES)))
+                        continue
+
+                    if totalbytes + info.file_size > MAX_RULESET_TOTAL_BYTES:
+                        rejected.append((name, 'total uncompressed cap of %d bytes reached' % MAX_RULESET_TOTAL_BYTES))
+                        break
+
+                    allowed = min(info.file_size, MAX_RULESET_MEMBER_BYTES)
+                    parent = os.path.dirname(target)
+
+                    if parent and not os.path.isdir(parent):
+                        try:
+                            os.makedirs(parent, exist_ok=True)
+                        except OSError as e:
+                            rejected.append((name, 'directory error: %s' % str(e)))
+                            continue
+
+                    memberbytes = 0
+                    overflow = False
+
+                    try:
+                        with zf.open(info, 'r') as src, open(target, 'wb') as dst:
+                            while True:
+                                chunk = src.read(65536)
+                                if not chunk:
+                                    break
+                                memberbytes += len(chunk)
+                                if memberbytes > allowed:
+                                    overflow = True
+                                    break
+                                dst.write(chunk)
+                    except Exception as e:
+                        rejected.append((name, 'read error: %s' % str(e)))
+                        try:
+                            os.remove(target)
+                        except OSError:
+                            pass
+                        continue
+
+                    if overflow:
+                        rejected.append((name, 'decompressed size exceeds the declared size of %d bytes' % info.file_size))
+                        try:
+                            os.remove(target)
+                        except OSError:
+                            pass
+                        continue
+
+                    extracted += 1
+                    totalbytes += memberbytes
+
+        except zipfile.BadZipFile:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nThe ruleset archive is corrupted: %s\n" % zippath + mycolors.reset)
+            printr()
+            return None
+        except Exception as e:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + "\nError while extracting the ruleset archive: %s\n" % str(e) + mycolors.reset)
+            printr()
+            return None
+
+        collector.add({
+            'ruleset_archive': zippath,
+            'rules_directory': destroot,
+            'entries_inspected': inspected,
+            'extracted': extracted,
+            'extracted_bytes': totalbytes,
+            'skipped_not_rule': skippednotrule,
+            'skipped_directories': skippeddirs,
+            'rejected': len(rejected),
+            'rejected_details': '; '.join('%s (%s)' % (n, r) for n, r in rejected[:20])
+        })
+
+        if is_text_output():
+            fields = {
+                'Archive': zippath,
+                'Rules Directory': destroot,
+                'Entries Inspected': str(inspected),
+                'Extracted': '%d rule file(s)' % extracted,
+                'Extracted Size': '%d bytes' % totalbytes,
+                'Skipped (not a rule)': str(skippednotrule),
+                'Skipped (directory)': str(skippeddirs),
+                'Rejected (unsafe)': str(len(rejected))
+            }
+
+            COLSIZE = max(len(f) for f in fields.keys()) + 3
+
+            print()
+            for field, value in fields.items():
+                print(mycolors.foreground.info(cv.bkg) + ("%s:" % field).ljust(COLSIZE) + mycolors.reset + value)
+
+            if rejected:
+                print()
+                print(mycolors.foreground.error(cv.bkg) + "Rejected entries:" + mycolors.reset)
+                for name, reason in rejected[:20]:
+                    print("  " + _ellipsis(name, 58).ljust(60) + reason)
+                if len(rejected) > 20:
+                    print("  ... and %d more" % (len(rejected) - 20))
+
+            if extracted == 0:
+                print()
+                print(mycolors.foreground.error(cv.bkg) + "No YARA rule file was extracted from the archive." + mycolors.reset)
+
+        printr()
+
+        if extracted == 0:
+            return None
+
+        return destroot
 
     @cached("bazaar_hash")
     def _raw_hash_info(self, hash_value):
@@ -1098,7 +1664,7 @@ class BazaarExtractor():
             params = {'query': 'get_info', 'hash': hash_value}
             response = requestsession.post(bazaar, data=params, timeout=60)
             if response.status_code == 200:
-                data = response.json()
+                data = strip_json_escapes(response.json())
                 if data.get('query_status') == 'ok' and data.get('data'):
                     return data['data'][0]
         except Exception:

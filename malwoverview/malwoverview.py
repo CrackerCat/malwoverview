@@ -21,7 +21,7 @@
 # Corey Forman (https://github.com/digitalsleuth)
 # Christian Clauss (https://github.com/cclauss)
 
-# Malwoverview.py: version 8.0.5  (codename: Revolutions)
+# Malwoverview.py: version 8.1.0  (codename: Revolutions)
 
 import os
 import sys
@@ -29,6 +29,8 @@ import argparse
 import configparser
 import platform
 import signal
+import requests
+from urllib.parse import urlparse
 from colorama import init
 from pathlib import Path
 from malwoverview.modules.alienvault import AlienVaultExtractor
@@ -43,7 +45,7 @@ from malwoverview.modules.triage import TriageExtractor
 from malwoverview.modules.urlhaus import URLHausExtractor
 from malwoverview.modules.virustotal import VirusTotalExtractor
 from malwoverview.modules.ipinfo import IPInfoExtractor
-from malwoverview.modules.bgpview import BGPViewExtractor
+from malwoverview.modules.crtsh import CrtShExtractor
 from malwoverview.modules.multipleip import MultipleIPExtractor
 from malwoverview.modules.nist import NISTExtractor
 from malwoverview.modules.vulncheck import VulnCheckExtractor
@@ -54,10 +56,11 @@ from malwoverview.modules.whois_mod import WhoisExtractor
 from malwoverview.modules.multiplehash import MultipleHashExtractor
 from malwoverview.modules.urlscanio import URLScanIOExtractor
 
-from malwoverview.utils.colors import printr
+from malwoverview.utils.colors import mycolors, printr, strip_terminal_escapes
+from malwoverview.utils.session import NETWORK_FAILURE_HINTS, network_failure_hint, network_failure_message, failure_message
 from malwoverview.utils.hash import calchash, detect_hash_type
 from malwoverview.utils.output import collector, is_text_output
-from malwoverview.utils.config import validate_config
+from malwoverview.utils.config import validate_config, check_config_permissions
 from malwoverview.utils.sanitize import (
     sanitize_hash, sanitize_ip, sanitize_domain, sanitize_url,
     sanitize_cve, sanitize_path, sanitize_tag, sanitize_general,
@@ -68,7 +71,7 @@ import malwoverview.modules.configvars as cv
 __author__ = "Alexandre Borges"
 __copyright__ = "Copyright 2018-2026 Alexandre Borges"
 __license__ = "GNU General Public License v3.0"
-__version__ = "8.0.5"
+__version__ = "8.1.0"
 __email__ = "reverseexploit at proton.me"
 
 def finish_hook(signum, frame):
@@ -95,10 +98,30 @@ class _TeeWriter:
         return getattr(self.original, 'encoding', 'utf-8')
 
 
+BAZAAR_NEEDS_ARG = (1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13)
+MALPEDIA_NEEDS_ARG = (4, 6, 7, 8, 9)
+VULNCHECK_NEEDS_ARG = (3, 7, 8)
+
+
+def bgpview_removed(*_args):
+    print(mycolors.foreground.error(cv.bkg)
+          + "\n-ip 2 was removed in 8.1.0. It queried BGPView, whose domain no longer resolves "
+            "and whose service is gone. Use -ip 1 for IPInfo, or -ip 7 for every remaining "
+            "service.\n"
+          + mycolors.reset)
+    return False
+
+
 def main():
     FINISH_SIGNALS = [signal.SIGINT, signal.SIGTERM]
     for signal_to_hook in FINISH_SIGNALS:
         signal.signal(signal_to_hook, finish_hook)
+
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(errors='replace')
+        except (AttributeError, ValueError):
+            pass
 
     cv.windows = ''
     if platform.system() == 'Windows':
@@ -109,35 +132,35 @@ def main():
         USER_HOME_DIR = str(Path.home()) + '/'
         cv.windows = 0
 
-    parser = argparse.ArgumentParser(prog=None, description="Malwoverview is a first response tool for threat hunting written by Alexandre Borges. This version is " + __version__, usage="usage: python malwoverview.py -c <API configuration file> -d <directory> -o <0|1> -v <1-13> -V <virustotal arg> -a <1-17> -A <filename> -l <1-7> -L <hash> -j <1-7> -J <URLhaus argument> -p <1-8> -P <polyswarm argument> -y <1-5> -Y <file name> -n <1-5> -N <argument> -m <1-8> -M <argument> -b <1-12> -B <arg> -x <1-9> -X <arg> --nist <1-5> --NIST <argument> -O <output directory> -ip <1-8> -IP <IP address> -vc <1-8> -VC <argument> -s <1-2> -S <arg> -ab <1> -AB <arg> -gn <1> -GN <arg> -wh <1-2> -WH <arg> -u <1-5> -U <arg> --correlate-hash <hash> --extract-iocs <file> --yara <rules> --yara-target <target> --output-format text|json|csv --proxy <url> --quiet --verbose --no-cache --interactive --attack-map")
+    parser = argparse.ArgumentParser(prog=None, description="Malwoverview is a first response tool for threat hunting written by Alexandre Borges. This version is " + __version__, usage="usage: python malwoverview.py -c <API configuration file> -d <directory> -o <0|1> -v <1-20> -V <virustotal arg> -a <1-13> -A <filename> -l <1-8> -L <hash|file type> -j <1-8> -J <URLhaus argument> -p <1-8> -P <polyswarm argument> -y <1-5> -Y <file name> -n <1-5> -N <argument> -m <1-9> -M <argument> -b <1-15> -B <arg> -x <1-9> -X <arg> --nist <1-5> --NIST <argument> -O <output directory> -ip <1-8> -IP <IP address> -vc <1-8> -VC <argument> -s <1-2> -S <arg> -ab <1> -AB <arg> -gn <1> -GN <arg> -wh <1-2> -WH <arg> -ct <1-2> -CT <domain> -u <1-5> -U <arg> --correlate-hash <hash> --extract-iocs <file> --yara <rules> --yara-target <target> --peinfo <target> --entropy-threshold <value> --sigcheck <target> --no-signature --sig-verify-mode <mode> --output-format text|json|csv --proxy <url> --quiet --verbose --no-cache --cache-ttl <seconds> --cache-stats --prune-cache --clear-cache --no-resolve --defang --no-ioc-filter --report html|pdf --interactive --tui --attack-map")
     
     malware_group = parser.add_argument_group('MALWARE OPTIONS', 'Malware analysis and intelligence query options')
     malware_group.add_argument('-c', '--config', dest='config', type=str, metavar="CONFIG FILE", default=(USER_HOME_DIR + '.malwapi.conf'), help='Use a custom config file to specify API\'s.')
     malware_group.add_argument('-d', '--directory', dest='direct', type=str, default='', metavar="DIRECTORY", help='Specifies the directory containing malware samples to be checked against VIRUS TOTAL. Use the option -D to decide whether you are being using a public VT API or a Premium VT API.')
     malware_group.add_argument('-o', '--background', dest='backg', type=int, default=1, metavar="BACKGROUND", help='Adapts the output colors to a light background color terminal. The default is dark background color terminal.')
-    malware_group.add_argument('-v', '--virustotal_option', dest='virustotaloption', type=int, default=0, metavar="VIRUSTOTAL", help='-v 1: given a file using -V option, it queries the VIRUS TOTAL database (API v.3) to get the report for the given file through -V option.; -v 2: it shows an antivirus report for a given file using -V option (API v.3); -v 3: equal to -v2, but the binary\'s IAT and EAT are also shown (API v.3); -v 4: it extracts the overlay; -v 5: submits an URL to VT scanning; -v 6: submits an IP address to Virus Total; -v 7: this options gets a report on the provided domain from Virus Total; -v 8: verifies a given hash against Virus Total; -v 9: submits a sample to VT (up to 32 MB). Use forward slash to specify the target file on Windows systems. Demands passing sample file with -V option; -v 10: verifies hashes from a provided file through option -V. This option uses public VT API v.3; -v 11: verifies hashes from a provided file through option -V. This option uses Premium API v.3; -v 12: it shows behaviour information of a sample given a hash through option -V. This option uses VT API v.3; -v 13: it submits LARGE files (above 32 MB) to VT using API v.3;')
+    malware_group.add_argument('-v', '--virustotal_option', dest='virustotaloption', type=int, default=0, metavar="VIRUSTOTAL", help='-v 1: given a file using -V option, it queries the VIRUS TOTAL database (API v.3) to get the report for the given file through -V option.; -v 2: it shows an antivirus report for a given file using -V option (API v.3); -v 3: equal to -v2, but the binary\'s IAT and EAT are also shown (API v.3); -v 4: it extracts the overlay; -v 5: submits an URL to VT scanning; -v 6: submits an IP address to Virus Total; -v 7: this options gets a report on the provided domain from Virus Total; -v 8: verifies a given hash against Virus Total; -v 9: submits a sample to VT (up to 32 MB). Use forward slash to specify the target file on Windows systems. Demands passing sample file with -V option; -v 10: verifies hashes from a provided file through option -V. This option uses public VT API v.3; -v 11: verifies hashes from a provided file through option -V. This option uses Premium API v.3; -v 12: it shows behaviour information of a sample given a hash through option -V. This option uses VT API v.3; -v 13: it submits LARGE files (above 32 MB) to VT using API v.3; -v 14: submits a Retrohunt job using the YARA rules file or rules directory given with -V (VT scans the samples it received over the past months against the rules); -v 15: lists your Retrohunt jobs, optionally filtered by a status given with -V (starting, running, aborting, aborted or finished); -v 16: shows the status and progress of the Retrohunt job whose id is given with -V; -v 17: lists the files matched by the Retrohunt job whose id is given with -V; -v 18: creates a Livehunt ruleset from the YARA rules file or rules directory given with -V (VT then matches every new submission against it); -v 19: lists your Livehunt rulesets; -v 20: lists your Livehunt notifications. Options 14 to 20 need a VT key with premium (enterprise) privileges;')
     malware_group.add_argument('-V', '--virustotal_arg', dest='virustotalarg', type=str, default='', metavar="VIRUSTOTAL_ARG", help='Provides argument for -v option. If "-v 1" to "-v 4" then -V must be a file path; If "-v 5" then -V must be a URL; If "-v 6" then -V must be an IP address; If "-v 7" then -V must be a domain; If "-v 8" then -V must be a hash (MD5/SHA1/SHA256); If "-v 9" or "-v 13" then -V must be a file path to submit; If "-v 10" or "-v 11" then -V must be a file containing hashes (one per line); If "-v 12" then -V must be a hash for behavior analysis.')
-    malware_group.add_argument('-a', '--hybrid_option', dest='haoption', type=int, default=0, metavar="HYBRID_ANALYSIS", help='This parameter fetches reports from HYBRID ANALYSIS, download samples and submits samples to be analyzed. The possible values are: 1: gets a report for a given hash or sample from a Windows 7 32-bit environment; 2: gets a report for a given hash or sample from a Windows 7 32-bit environment (HWP Support); 3: gets a report for given hash or sample from a Windows 64-bit environment; 4: gets a report for a given hash or sample from an Android environment; 5: gets a report for a given hash or sample from a Linux 64-bit environment; 6: submits a sample to Windows 7 32-bit environment; 7. submits a sample to Windows 7 32-bit environment with HWP support environment; 8. submits a sample to Windows 7 64-bit environment ; 9. submits a sample to an Android environment ; 10. submits a sample to a Linux 64-bit environment; 11. downloads a sample from a Windows 7 32-bit environment; 12. downloads a sample from a Windows 7 32-bit HWP environment; 13. downloads a sample from a Windows 7 64-bit environment; 14. downloads a sample from an Android environment; 15. downloads a sample from a Linux 64-bit environment; 16. batch hash check from a file (one hash per line); 17. directory scan - computes SHA256 for each file and checks against Hybrid Analysis.')
+    malware_group.add_argument('-a', '--hybrid_option', dest='haoption', type=int, default=0, metavar="HYBRID_ANALYSIS", help='This parameter fetches reports from HYBRID ANALYSIS, download samples and submits samples to be analyzed. The possible values are: 1: gets a report for a given hash or sample from a Windows 7 32-bit environment; 2: gets a report for a given hash or sample from a Windows 7 32-bit environment (HWP Support); 3: gets a report for given hash or sample from a Windows 64-bit environment; 4: gets a report for a given hash or sample from an Android environment; 5: gets a report for a given hash or sample from a Linux 64-bit environment; 6: submits a sample to Windows 7 32-bit environment; 7. submits a sample to Windows 7 32-bit environment with HWP support environment; 8. submits a sample to Windows 7 64-bit environment ; 9. submits a sample to an Android environment ; 10. submits a sample to a Linux 64-bit environment; 11. downloads the sample for a given hash (the stored sample is the same regardless of the sandbox environment, so a single option replaces the former options 11 to 15); 12. batch hash check from a file (one hash per line); 13. directory scan - computes SHA256 for each file and checks against Hybrid Analysis.')
     malware_group.add_argument('-A', '--ha_arg', dest='haarg', type=str, metavar="SUBMIT_HA", help='Provides argument for -a option from HYBRID ANALYSIS. If "-a 1" to "-a 5" then -A must be a hash or a file path (auto-detected); If "-a 6" to "-a 10" then -A must be a file path to submit; If "-a 11" to "-a 15" then -A must be a hash to download; If "-a 16" then -A must be a file containing hashes (one per line); If "-a 17" then -A must be a directory path to scan.')
     malware_group.add_argument('-D', '--vtpubpremium', dest='vtpubpremium', type=int, default=0, metavar="VT_PUBLIC_PREMIUM", help='This option must be used with -d option. Possible values: <0> it uses the Premium VT API v3 (default); <1> it uses the Public VT API v3.')
-    malware_group.add_argument('-l', '--malsharelist', dest='malsharelist', type=int, default=0, metavar="MALSHARE_HASHES", help='This option performs download a sample and shows hashes of a specific type from the last 24 hours from MALSHARE repository. Possible values are: 1: Download a sample; 2: PE32 (default) ; 3: ELF ; 4: Java; 5: PDF ; 6: Composite(OLE); 7: List of hashes from past 24 hours.')
-    malware_group.add_argument('-L', '--malshare_hash', dest='malsharehash', type=str, metavar="MALSHARE_HASH_SEARCH", help='Provides a hash as argument for downloading a sample from MALSHARE repository.')
-    malware_group.add_argument('-j', '--haus_option', dest='hausoption', type=int, default=0, metavar="HAUS_OPTION", help='This option fetches information from URLHaus depending of the value passed as argument: 1: performs download of the given sample; 2: queries information about a provided hash ; 3: searches information about a given URL; 4: searches a malicious URL by a given tag (case sensitive); 5: searches for payloads given a tag; 6: retrives a list of downloadable links to recent payloads; 7: retrives a list of recent malicious URLs.')
-    malware_group.add_argument('-J', '--haus_arg', dest='hausarg', type=str, metavar="HAUS_ARG", help='Provides argument for -j option from URLHaus. If "-j 1" then -J must be a SHA256 hash to download the sample; If "-j 2" then -J must be a hash (MD5/SHA1/SHA256) to search; If "-j 3" then -J must be a URL to check; If "-j 4" then -J must be a tag (case sensitive); If "-j 5" then -J must be a signature name.')
+    malware_group.add_argument('-l', '--malsharelist', dest='malsharelist', type=int, default=0, metavar="MALSHARE_HASHES", help='This option performs download a sample and shows hashes of a specific type from the last 24 hours from MALSHARE repository. Possible values are: 1: Download a sample; 2: PE32 (default) ; 3: ELF ; 4: Java; 5: PDF ; 6: List the file types available in the last 24 hours (and how many samples of each); 7: List of hashes from past 24 hours; 8: List hashes of the file type given with -L (use -l 6 to discover the valid file types).')
+    malware_group.add_argument('-L', '--malshare_hash', dest='malsharehash', type=str, metavar="MALSHARE_HASH_SEARCH", help='Provides a hash as argument for downloading a sample from MALSHARE repository (-l 1) or, when used with -l 8, the file type whose hashes must be listed.')
+    malware_group.add_argument('-j', '--haus_option', dest='hausoption', type=int, default=0, metavar="HAUS_OPTION", help='This option fetches information from URLHaus depending of the value passed as argument: 1: performs download of the given sample; 2: queries information about a provided hash ; 3: searches information about a given URL; 4: searches a malicious URL by a given tag (case sensitive); 5: searches for payloads given a tag; 6: retrives a list of downloadable links to recent payloads; 7: retrives a list of recent malicious URLs; 8: batch hash check from a file (one hash per line).')
+    malware_group.add_argument('-J', '--haus_arg', dest='hausarg', type=str, metavar="HAUS_ARG", help='Provides argument for -j option from URLHaus. If "-j 1" then -J must be a SHA256 hash to download the sample; If "-j 2" then -J must be a hash (MD5/SHA1/SHA256) to search; If "-j 3" then -J must be a URL to check; If "-j 4" then -J must be a tag (case sensitive); If "-j 5" then -J must be a signature name; If "-j 8" then -J must be the path of a file containing one hash per line.')
     malware_group.add_argument('-p', '--poly_option', dest='polyoption', type=int, default=0, metavar="POLY_OPTION", help='(Only for Linux) This option is related to POLYSWARM operations: 1. searches information related to a given hash provided using -P option; 2. submits a sample provided by -P option to be analyzed by Polyswarm engine ; 3. Downloads a sample from Polyswarm by providing the hash throught option -P .Attention: Polyswarm enforces a maximum of 20 samples per month; 4. searches for similar samples given a sample file thought option -P; 5. searches for samples related to a provided IP address through option -P; 6. searches for samples related to a given domain provided by option -P; 7. searches for samples related to a provided URL throught option -P; 8. searches for samples related to a provided malware family given by option -P.')
     malware_group.add_argument('-P', '--poly_arg', dest='polyarg', type=str, metavar="POLYSWARM_ARG", help='(Only for Linux) Provides an argument for -p option from POLYSWARM.')
     malware_group.add_argument('-y', '--android_option', dest='androidoption', type=int, default=0, metavar="ANDROID_OPTION", help='This ANDROID option has multiple possible values: <1>: Check all third-party APK packages from the USB-connected Android device against Hybrid Analysis using multithreads. Notes: the Android device does not need to be rooted and the system does need to have the adb tool in the PATH environment variable; <2>: Check all third-party APK packages from the USB-connected Android device against VirusTotal using Public API (slower because of 60 seconds delay for each 4 hashes). Notes: the Android device does not need to be rooted and the system does need to have adb tool in the PATH environment variable; <3>: Check all third-party APK packages from the USB-connected Android device against VirusTotal using multithreads (only for Private Virus API). Notes: the Android device does not need to be rooted and the system needs to have adb tool in the PATH environment variable; <4> Sends an third-party APK from your USB-connected Android device to Hybrid Analysis; 5. Sends an third-party APK from your USB-connected Android device to Virus-Total.')
     malware_group.add_argument('-Y', '--android_arg', dest='androidarg', type=str, default='', metavar="ANDROID_ARG", help='This option provides the argument for -y from ANDROID.')
     malware_group.add_argument('-n', '--alienvault', dest='alienvault', type=int, default=0, metavar="ALIENVAULT", help='Checks multiple information from ALIENVAULT. The possible values are: 1: Get the subscribed pulses ; 2: Get information about an IP address; 3: Get information about a domain; 4: Get information about a hash; 5: Get information about a URL.')
     malware_group.add_argument('-N', '--alienvaultargs', dest='alienvaultargs', type=str, default='', metavar="ALIENVAULT_ARGS", help='Provides argument for -n option from ALIENVAULT. If "-n 1" then -N must be the number of subscribed pulses to retrieve; If "-n 2" then -N must be an IP address; If "-n 3" then -N must be a domain; If "-n 4" then -N must be a hash (MD5/SHA256); If "-n 5" then -N must be a URL.')
-    malware_group.add_argument('-m', '--malpedia', dest='malpedia', type=int, default=0, metavar="MALPEDIA", help='This option is related to MALPEDIA and presents different meanings depending on the chosen value. Thus, 1: List meta information for all families ; 2: List all actors ID ; 3: List all available payloads organized by family from Malpedia; 4: Get meta information from an specific actor, so it is necessary to use the -M option. Additionally, try to confirm the correct actor ID by executing malwoverview with option -m 3; 5: List all families IDs; 6: Get meta information from an specific family, so it is necessary to use the -M option. Additionally, try to confirm the correct family ID by executing malwoverview with option -m 5; 7: Get a malware sample from malpedia (zip format -- password: infected). It is necessary to specify the requested hash by using -M option; 8: Get a zip file containing Yara rules for a specific family (get the possible families using -m 5), which must be specified by using -M option.')
-    malware_group.add_argument('-M', '--malpediarg', dest='malpediaarg', type=str, default='', metavar="MALPEDIAARG", help='Provides argument for -m option from MALPEDIA. If "-m 4" then -M must be an actor name (confirm with -m 2); If "-m 6" then -M must be a family name (confirm with -m 5); If "-m 7" then -M must be a hash to download the sample; If "-m 8" then -M must be a family name to get YARA rules.')
-    malware_group.add_argument('-b', '--bazaar', dest='bazaar', type=int, default=0, metavar="BAZAAR", help='Checks multiple information from MALWARE BAZAAR and THREATFOX. The possible values are: 1: (Bazaar) Query information about a malware hash sample ; 2: (Bazaar) Get information and a list of malware samples associated and according to a specific tag; 3: (Bazaar) Get a list of malware samples according to a given imphash; 4: (Bazaar) Query latest malware samples; 5: (Bazaar) Download a malware sample from Malware Bazaar by providing a SHA256 hash. The downloaded sample is zipped using the following password: infected; 6: (ThreatFox) Get current IOC dataset from last x days given by option -B (maximum of 7 days); 7: (ThreatFox) Search for the specified IOC on ThreatFox given by option -B; 8: (ThreatFox) Search IOCs according to the specified tag given by option -B; 9: (ThreatFox) Search IOCs according to the specified malware family provided by option -B; 10. (ThreatFox) List all available malware families; 11: (Bazaar) Batch hash check from a file (one hash per line); 12: (Bazaar) Directory scan - computes SHA256 for each file and checks against Malware Bazaar.')
+    malware_group.add_argument('-m', '--malpedia', dest='malpedia', type=int, default=0, metavar="MALPEDIA", help='This option is related to MALPEDIA and presents different meanings depending on the chosen value. Thus, 1: List meta information for all families ; 2: List all actors ID ; 3: List all available payloads organized by family from Malpedia; 4: Get meta information from an specific actor, so it is necessary to use the -M option. Additionally, try to confirm the correct actor ID by executing malwoverview with option -m 3; 5: List all families IDs; 6: Get meta information from an specific family, so it is necessary to use the -M option. Additionally, try to confirm the correct family ID by executing malwoverview with option -m 5; 7: Get a malware sample from malpedia (zip format -- password: infected). It is necessary to specify the requested hash by using -M option; 8: Get a zip file containing Yara rules for a specific family (get the possible families using -m 5), which must be specified by using -M option; 9: Get a zip file containing the complete Malpedia Yara ruleset for a TLP level, which must be given with -M as one of tlp_white, tlp_green, tlp_amber or auto (the short forms white, green and amber are also accepted). Combine it with --yara to scan with the downloaded rules.')
+    malware_group.add_argument('-M', '--malpediarg', dest='malpediaarg', type=str, default='', metavar="MALPEDIAARG", help='Provides argument for -m option from MALPEDIA. If "-m 4" then -M must be an actor name (confirm with -m 2); If "-m 6" then -M must be a family name (confirm with -m 5); If "-m 7" then -M must be a hash to download the sample; If "-m 8" then -M must be a family name to get YARA rules; If "-m 9" then -M must be a TLP level (tlp_white, tlp_green, tlp_amber or auto).')
+    malware_group.add_argument('-b', '--bazaar', dest='bazaar', type=int, default=0, metavar="BAZAAR", help='Checks multiple information from MALWARE BAZAAR and THREATFOX. The possible values are: 1: (Bazaar) Query information about a malware hash sample ; 2: (Bazaar) Get information and a list of malware samples associated and according to a specific tag; 3: (Bazaar) Get a list of malware samples according to a given imphash; 4: (Bazaar) Query latest malware samples; 5: (Bazaar) Download a malware sample from Malware Bazaar by providing a SHA256 hash. The downloaded sample is zipped using the following password: infected; 6: (ThreatFox) Get current IOC dataset from last x days given by option -B (maximum of 7 days); 7: (ThreatFox) Search for the specified IOC on ThreatFox given by option -B; 8: (ThreatFox) Search IOCs according to the specified tag given by option -B; 9: (ThreatFox) Search IOCs according to the specified malware family provided by option -B; 10. (ThreatFox) List all available malware families; 11: (Bazaar) Batch hash check from a file (one hash per line); 12: (Bazaar) Directory scan - computes SHA256 for each file and checks against Malware Bazaar; 13: (Bazaar) Search samples matching the YARA rule name given by option -B; 14: (YARAify) Download the YARAify rule set (abuse.ch), which is the rule set behind Malware Bazaar; 15: (YARAify) Extract the downloaded YARAify rule set into a rules directory that can be given to --yara.')
     malware_group.add_argument('-B', '--bazaararg', dest='bazaararg', type=str, metavar = "BAZAAR_ARG", help='Provides argument to -b MALWARE BAZAAR and THREAT FOX option. If you specified "-b 1" then the -B\'s argument must be a hash and a report about the sample will be retrieved; If you specified "-b 2" then -B\'s argument must be a malware tag and last samples matching this tag will be shown; If you specified "-b 3" then the argument must be a imphash and last samples matching this impshash will be shown; If you specified "-b 4", so the argument must be "100 or time", where "100" lists last "100 samples" and "time" lists last samples added to Malware Bazaar in the last 60 minutes; If you specified "-b 5", so the sample will be downloaded and -B\'s argument must be a SHA256 hash of the sample that you want to download from Malware Bazaar; If you specified "-b 6" then a list of IOCs will be retrieved and the -B\'s value is the number of DAYS to filter such IOCs. The maximum time is 7 (days); If you used "-b 7" so the -B\'s argument is the IOC you want to search for; If you used "-b 8", so the -B\'s argument is the IOC\'s TAG that you want search for; If you used "-b 9", so the -B argument is the malware family that you want to search for IOCs;')
     malware_group.add_argument('-x', '--triage', dest='triage', type=int, default=0, metavar="TRIAGE", help='Provides information from TRIAGE according to the specified value: <1> this option gets sample\'s general information by providing an argument with -X option in the following possible formats: sha256:<value>, sha1:<value>, md5:<value>, family:<value>, score:<value>, tag:<value>, url:<value>, wallet:<value>, ip:<value>; <2> Get a sumary report for a given Triage ID (got from option -x 1) ; <3> Submit a sample for analysis ; <4> Submit a sample through a URL for analysis ; <5> Download sample specified by the Triage ID; <6> Download pcapng file from sample associated to given Triage ID; <7> Get a dynamic report for the given Triage ID (got from option -x 1); <8> Batch hash check from a file (one hash per line); <9> Directory scan - computes SHA256 for each file and checks against Triage.')
     malware_group.add_argument('-X', '--triagearg', dest='triagearg', type=str, default='', metavar="TRIAGE_ARG", help='Provides argument for -x option from TRIAGE. If "-x 1" then -X must be a search query (e.g., sha256:<hash>, family:<name>, tag:<tag>, ip:<ip>); If "-x 2" then -X must be a Triage sample ID (obtained from -x 1); If "-x 3" then -X must be a file path to submit; If "-x 4" then -X must be a URL to submit; If "-x 5" or "-x 6" then -X must be a Triage sample ID to download; If "-x 7" then -X must be a Triage sample ID for dynamic report; If "-x 8" then -X must be a file containing hashes (one per line); If "-x 9" then -X must be a directory path to scan.')
     malware_group.add_argument('-O', '--output-dir', dest='output_dir', type=str, default='.', help='Set output directory for all sample downloads.')
-    malware_group.add_argument('-ip', '--ip', dest='ipoption', type=int, default=0, metavar="IP", help='Get IP information from various sources. The possible values are: 1: Get details for an IP address provided with -IP from IPInfo; 2: Get details for an IP address provided with -IP from BGPView; 3: Get details for an IP address provided with -IP from all available intel services (VirusTotal/Alienvault); 4: Get details from Shodan; 5: Get details from AbuseIPDB; 6: Get details from GreyNoise; 7: Get details from all services (comprehensive); 8: Batch check IP addresses from a file (one per line) against VirusTotal and show a summary table (IP Address, Country, AS Owner, Detection). Use -D to choose between Public (-D 1) and Premium (-D 0, default) VT API.')
+    malware_group.add_argument('-ip', '--ip', dest='ipoption', type=int, default=0, metavar="IP", help='Get IP information from various sources. The possible values are: 1: Get details for an IP address provided with -IP from IPInfo; 2: Removed in 8.1.0 (BGPView shut down); 3: Get details for an IP address provided with -IP from all available intel services (VirusTotal/Alienvault); 4: Get details from Shodan; 5: Get details from AbuseIPDB; 6: Get details from GreyNoise; 7: Get details from all services (comprehensive); 8: Batch check IP addresses from a file (one per line) against VirusTotal and show a summary table (IP Address, Country, AS Owner, Detection). Use -D to choose between Public (-D 1) and Premium (-D 0, default) VT API.')
     malware_group.add_argument('-IP', '--iparg', dest='iparg', type=str, metavar="IP_ARG", help='Provides an argument for the -ip option. For -ip 1 through 7 it must be a valid IPv4 or IPv6 address; for -ip 8 it must be a file containing IP addresses (one per line).')
     malware_group.add_argument('-s', '--shodan', dest='shodanoption', type=int, default=0, metavar="SHODAN", help='SHODAN options: 1: IP lookup; 2: Search query.')
     malware_group.add_argument('-S', '--shodanarg', dest='shodanarg', type=str, default='', metavar="SHODAN_ARG", help='Provides argument for -s option from SHODAN. If "-s 1" then -S must be an IP address; If "-s 2" then -S must be a search query (e.g., "apache", "port:22 country:BR").')
@@ -147,12 +170,19 @@ def main():
     malware_group.add_argument('-GN', '--greynoisearg', dest='greynoisearg', type=str, default='', metavar="GREYNOISE_ARG", help='Provides an IP address for -gn option from GREYNOISE.')
     malware_group.add_argument('-wh', '--whois', dest='whois', type=int, default=0, metavar="WHOIS", help='WHOIS options: 1: Domain whois lookup; 2: IP whois/RDAP lookup.')
     malware_group.add_argument('-WH', '--whoisarg', dest='whoisarg', type=str, default='', metavar="WHOIS_ARG", help='Provides argument for -wh option from WHOIS. If "-wh 1" then -WH must be a domain name; If "-wh 2" then -WH must be an IP address.')
+    malware_group.add_argument('-ct', '--crtsh', dest='crtsh', type=int, default=0, metavar="CRTSH", help='Certificate Transparency options, which query crt.sh and need no API key: 1: List the distinct DNS names seen in certificates issued for the domain given with -CT, which is a cheap way of enumerating subdomains; 2: List the certificates issued for the domain given with -CT (identifier, issuer, common name and validity dates, newest first).')
+    malware_group.add_argument('-CT', '--crtsharg', dest='crtsharg', type=str, default='', metavar="CRTSH_ARG", help='Provides the domain name for the -ct option.')
     malware_group.add_argument('-u', '--urlscanio', dest='urlscanio', type=int, default=0, metavar="URLSCANIO", help='URLSCAN.IO options: 1: Submit a URL for scanning; 2: Get scan result by UUID; 3: Search scans using Elasticsearch query syntax (e.g., "page.server:nginx", "filename:malware.exe", "task.tags:phishing", or a plain keyword); 4: Search scans by domain; 5: Search scans by IP.')
     malware_group.add_argument('-U', '--urlscanioarg', dest='urlscanioarg', type=str, default='', metavar="URLSCANIO_ARG", help='Provides argument for -u option from URLSCAN.IO. If "-u 1" then -U must be a URL to submit for scanning; If "-u 2" then -U must be a UUID (obtained from -u 1); If "-u 3" then -U must be an Elasticsearch query (e.g., "page.server:nginx", "task.tags:phishing"); If "-u 4" then -U must be a domain; If "-u 5" then -U must be an IP address.')
     malware_group.add_argument('--correlate-hash', dest='correlate_hash', type=str, default='', metavar="HASH", help='Cross-service hash correlation: queries a hash across VirusTotal, Hybrid Analysis, Triage, and AlienVault producing a consolidated report.')
-    malware_group.add_argument('--extract-iocs', dest='extract_iocs', type=str, default='', metavar="SOURCE", help='Extract IOCs (hashes, IPs, URLs, domains, CVEs) from a file (.txt, .pdf, .eml) or URL (http/https).')
+    malware_group.add_argument('--extract-iocs', dest='extract_iocs', type=str, default='', metavar="SOURCE", help='Extract IOCs (hashes, IPs, URLs, domains, emails, CVEs) from a file (.txt, .pdf, .eml) or URL (http/https).')
     malware_group.add_argument('--yara', dest='yara_rules', type=str, default='', metavar="RULES_FILE", help='YARA rules file to use for scanning.')
     malware_group.add_argument('--yara-target', dest='yara_target', type=str, default='', metavar="TARGET", help='File or directory to scan with YARA rules.')
+    malware_group.add_argument('--peinfo', dest='peinfo', type=str, default='', metavar="TARGET", help='Local PE triage of a file or directory (no API key): file type, size, overlay, overlay size and entropy.')
+    malware_group.add_argument('--entropy-threshold', dest='entropy_threshold', type=float, default=7.0, metavar="VALUE", help='Entropy value at which --peinfo highlights a file as packed or encrypted. Default: 7.0')
+    malware_group.add_argument('--sigcheck', dest='sigcheck', type=str, default='', metavar="TARGET", help='Check the Authenticode signature of a file or directory (no API key): status, signer, issuer, certificate dates, digest algorithm, certificate thumbprint and serial number.')
+    malware_group.add_argument('--no-signature', dest='no_signature', action='store_true', default=False, help='Skip signature verification in --peinfo and --sigcheck, reporting only whether a signature is present.')
+    malware_group.add_argument('--sig-verify-mode', dest='sig_verify_mode', type=str, default='best', choices=['any', 'first', 'all', 'best'], metavar="MODE", help='Which embedded signature decides the status of a multi-signed file: any, first, all or best. Default: best')
     malware_group.add_argument('--attack-map', dest='attack_map', action='store_true', default=False, help='Enable MITRE ATT&CK technique mapping for behavior reports.')
     
     vuln_section = parser.add_argument_group('VULNERABILITY OPTIONS', 'Vulnerability database query options')
@@ -176,6 +206,12 @@ def main():
     general_group.add_argument('--verbose', dest='verbose', action='store_true', default=False, help='Show debug information (request URLs, timing, etc.).')
     general_group.add_argument('--no-cache', dest='no_cache', action='store_true', default=False, help='Disable result caching.')
     general_group.add_argument('--cache-ttl', dest='cache_ttl', type=int, default=3600, metavar="SECONDS", help='Cache time-to-live in seconds (default: 3600).')
+    general_group.add_argument('--cache-stats', dest='cache_stats', action='store_true', default=False, help='Show the local result cache location, how many entries it holds, how many of them are expired under the current --cache-ttl, and its size on disk. Then exit.')
+    general_group.add_argument('--prune-cache', dest='prune_cache', action='store_true', default=False, help='Delete only the expired entries from the local result cache (according to --cache-ttl) and exit.')
+    general_group.add_argument('--clear-cache', dest='clear_cache', action='store_true', default=False, help='Delete every entry from the local result cache and exit.')
+    general_group.add_argument('--no-resolve', dest='no_resolve', action='store_true', default=False, help='Do not resolve or geolocate the host names found in the results. Listing a feed (for example the URLHaus payloads and tag listings) normally makes your host look up every URL it shows, which tells the operator of that infrastructure that it is being investigated. With this option the location column shows "Not Resolved" instead.')
+    general_group.add_argument('--defang', dest='defang', action='store_true', default=False, help='Print the IOCs listed by --extract-iocs in defanged form (hxxp://example[.]com), so they can be copied into a report or a ticket without becoming clickable. It applies to that listing only, and changes only the output: the queries are still made with the real values.')
+    general_group.add_argument('--no-ioc-filter', dest='no_ioc_filter', action='store_true', default=False, help='Turn off the noise filtering that --extract-iocs applies by default. Normally an HTML page has its <script>, <style> and <svg> blocks skipped, a domain is only reported when its last label is a real top-level domain, and links back to the source site or to known page furniture (analytics, fonts, social buttons) are dropped. With this option every regex match in the raw source is reported instead.')
     general_group.add_argument('--report', dest='report_format', type=str, default='', choices=['', 'html', 'pdf'], help='Generate a report in the specified format.')
     general_group.add_argument('--report-file', dest='report_file', type=str, default='', metavar="PATH", help='Output path for the generated report.')
     general_group.add_argument('--interactive', dest='interactive', action='store_true', default=False, help='Launch interactive REPL mode.')
@@ -260,13 +296,13 @@ def main():
     uh_tag.add_argument('target', help='Tag name')
     uh_download = uh_sub.add_parser('download', help='Download a sample')
     uh_download.add_argument('target', help='Hash value')
+    uh_batch = uh_sub.add_parser('batch', help='Batch hash check from a file')
+    uh_batch.add_argument('target', help='File with one hash per line')
 
     ip_parser = subparsers.add_parser('ip', help='IP address lookups')
     ip_sub = ip_parser.add_subparsers(dest='ip_action')
     ip_info = ip_sub.add_parser('info', help='IPInfo lookup')
     ip_info.add_argument('target', help='IP address')
-    ip_bgp = ip_sub.add_parser('bgp', help='BGPView lookup')
-    ip_bgp.add_argument('target', help='IP address')
     ip_shodan = ip_sub.add_parser('shodan', help='Shodan lookup')
     ip_shodan.add_argument('target', help='IP address')
     ip_abuse = ip_sub.add_parser('abuse', help='AbuseIPDB lookup')
@@ -333,10 +369,10 @@ def main():
             args.haoption = 11
             args.haarg = args.target
         elif args.ha_action == 'batch':
-            args.haoption = 16
+            args.haoption = 12
             args.haarg = args.target
         elif args.ha_action == 'dir':
-            args.haoption = 17
+            args.haoption = 13
             args.haarg = args.target
     elif args.command == 'bazaar':
         bz_map = {'hash': 1, 'tag': 2, 'download': 5, 'batch': 11, 'dir': 12}
@@ -349,12 +385,12 @@ def main():
             args.triage = tr_map.get(args.tr_action, 0)
             args.triagearg = args.target
     elif args.command == 'urlhaus':
-        uh_map = {'download': 1, 'hash': 2, 'url': 3, 'tag': 4}
+        uh_map = {'download': 1, 'hash': 2, 'url': 3, 'tag': 4, 'batch': 8}
         if args.uh_action:
             args.hausoption = uh_map.get(args.uh_action, 0)
             args.hausarg = args.target
     elif args.command == 'ip':
-        ip_map = {'info': 1, 'bgp': 2, 'shodan': 4, 'abuse': 5, 'greynoise': 6, 'all': 7, 'batch': 8}
+        ip_map = {'info': 1, 'shodan': 4, 'abuse': 5, 'greynoise': 6, 'all': 7, 'batch': 8}
         if args.ip_action:
             args.ipoption = ip_map.get(args.ip_action, 0)
             args.iparg = args.target
@@ -394,6 +430,37 @@ def main():
     cv.cache_enabled = not args.no_cache
     cv.cache_ttl = args.cache_ttl
     cv.attack_map = args.attack_map
+    cv.no_resolve = args.no_resolve
+    cv.defang = args.defang
+    cv.ioc_filter = not args.no_ioc_filter
+
+    check_config_permissions(args.config)
+
+    if args.cache_stats or args.prune_cache or args.clear_cache:
+        import sqlite3
+        from malwoverview.utils.cache import cache_stats, prune_cache, clear_cache
+        from malwoverview.utils.peinfo import humansize
+        try:
+            if args.cache_stats:
+                info = cache_stats()
+                COLSIZE = 16
+                infocolor = mycolors.foreground.info(cv.bkg)
+                print()
+                print(infocolor + "Cache file:".ljust(COLSIZE) + mycolors.reset + str(info['db_path']))
+                print(infocolor + "Entries:".ljust(COLSIZE) + mycolors.reset + str(info['entries']))
+                print(infocolor + "Expired:".ljust(COLSIZE) + mycolors.reset + str(info['expired']))
+                print(infocolor + "TTL:".ljust(COLSIZE) + mycolors.reset + str(info['ttl']) + " seconds")
+                print(infocolor + "Size on disk:".ljust(COLSIZE) + mycolors.reset + humansize(info['size_bytes']))
+            if args.prune_cache:
+                print(mycolors.foreground.success(cv.bkg) + "\nExpired cache entries removed: " + str(prune_cache()) + mycolors.reset)
+            if args.clear_cache:
+                print(mycolors.foreground.success(cv.bkg) + "\nCache entries removed: " + str(clear_cache()) + mycolors.reset)
+        except sqlite3.Error as e:
+            print(mycolors.foreground.error(cv.bkg) + "\nCould not access the result cache: " + str(e) + mycolors.reset)
+            printr()
+            exit(1)
+        printr()
+        exit(0)
 
     if args.interactive:
         from malwoverview.interactive import InteractiveSession
@@ -452,10 +519,11 @@ def main():
     optval3 = range(7)
     optval5 = range(6)
     optval6 = range(9)
-    optval7 = range(13)
+    optval7 = range(16)
     optval8 = range(10)
-    optval9 = range(14)
-    optval10 = range(18)
+    optval9 = range(21)
+    optval10 = range(14)
+    optval11 = range(10)
     repo = args.direct
     cv.output_dir = args.output_dir
     cv.bkg = args.backg
@@ -499,6 +567,8 @@ def main():
     greynoisex = args.greynoise
     greynoiseargx = args.greynoisearg
     whoisx = args.whois
+    crtshx = args.crtsh
+    crtshargx = args.crtsharg
     whoisargx = args.whoisarg
     urlscaniox = args.urlscanio
     urlscanioargx = args.urlscanioarg
@@ -506,75 +576,123 @@ def main():
     extract_iocsx = args.extract_iocs
     yara_rulesx = args.yara_rules
     yara_targetx = args.yara_target
+    peinfox = args.peinfo
+    sigcheckx = args.sigcheck
 
-    _CLI_VALIDATORS = {
-        'vt_hash':   (virustotaloptionx, virustotalargx, [8, 12], sanitize_hash),
-        'vt_url':    (virustotaloptionx, virustotalargx, [5], sanitize_url),
-        'vt_ip':     (virustotaloptionx, virustotalargx, [6], sanitize_ip),
-        'vt_domain': (virustotaloptionx, virustotalargx, [7], sanitize_domain),
-        'vt_path':   (virustotaloptionx, virustotalargx, [1, 2, 3, 4, 9, 10, 11, 13], sanitize_path),
-        'ha_hp':     (haoptionx, haargx, [1, 2, 3, 4, 5], sanitize_hash_or_path),
-        'ha_hash':   (haoptionx, haargx, [11, 12, 13, 14, 15], sanitize_hash),
-        'ha_path':   (haoptionx, haargx, [6, 7, 8, 9, 10, 16, 17], sanitize_path),
-        'ml_hash':   (mallist, malhash, [1], sanitize_hash),
-        'poly_hash': (polyoptionx, polyargx, [1, 3], sanitize_hash),
-        'poly_path': (polyoptionx, polyargx, [2, 4], sanitize_path),
-        'poly_ip':   (polyoptionx, polyargx, [5], sanitize_ip),
-        'poly_dom':  (polyoptionx, polyargx, [6], sanitize_domain),
-        'poly_url':  (polyoptionx, polyargx, [7], sanitize_url),
-        'poly_gen':  (polyoptionx, polyargx, [8], sanitize_general),
-        'bz_hash':   (bazaarx, bazaarargx, [1, 3, 5], sanitize_hash),
-        'bz_tag':    (bazaarx, bazaarargx, [2, 8], sanitize_tag),
-        'bz_path':   (bazaarx, bazaarargx, [11, 12], sanitize_path),
-        'bz_gen':    (bazaarx, bazaarargx, [7, 9], sanitize_general),
-        'tr_gen':    (triagex, triageargx, [1], sanitize_general),
-        'tr_id':     (triagex, triageargx, [2, 5, 6, 7], sanitize_general),
-        'tr_path':   (triagex, triageargx, [3, 8, 9], sanitize_path),
-        'tr_url':    (triagex, triageargx, [4], sanitize_url),
-        'al_ip':     (alienx, alienargsx, [2], sanitize_ip),
-        'al_domain': (alienx, alienargsx, [3], sanitize_domain),
-        'al_hash':   (alienx, alienargsx, [4], sanitize_hash),
-        'al_url':    (alienx, alienargsx, [5], sanitize_url),
-        'mp_hash':   (malpediax, malpediaargx, [7], sanitize_hash),
-        'mp_gen':    (malpediax, malpediaargx, [4, 6, 8], sanitize_general),
-        'uh_hash':   (hausoptionx, hausargx, [1, 2], sanitize_hash),
-        'uh_url':    (hausoptionx, hausargx, [3], sanitize_url),
-        'uh_tag':    (hausoptionx, hausargx, [4, 5], sanitize_tag),
-        'ip_addr':   (ipoptionx, ipargx, [1, 2, 3, 4, 5, 6, 7], sanitize_ip),
-        'ip_batch':  (ipoptionx, ipargx, [8], sanitize_path),
-        'sh_ip':     (shodanoptionx, shodanargx, [1], sanitize_ip),
-        'sh_gen':    (shodanoptionx, shodanargx, [2], sanitize_general),
-        'ab_ip':     (abuseipdbx, abuseipdbargx, [1], sanitize_ip),
-        'gn_ip':     (greynoisex, greynoiseargx, [1], sanitize_ip),
-        'wh_domain': (whoisx, whoisargx, [1], sanitize_domain),
-        'wh_ip':     (whoisx, whoisargx, [2], sanitize_ip),
-        'us_url':    (urlscaniox, urlscanioargx, [1], sanitize_url),
-        'us_uuid':   (urlscaniox, urlscanioargx, [2], sanitize_uuid),
-        'us_gen':    (urlscaniox, urlscanioargx, [3], sanitize_general),
-        'us_domain': (urlscaniox, urlscanioargx, [4], sanitize_domain),
-        'us_ip':     (urlscaniox, urlscanioargx, [5], sanitize_ip),
-        'vc_cve':    (vulncheckoption, vulncheckarg, [3, 7, 8], sanitize_cve),
-        'nist_cve':  (nistoption, nistarg, [2], sanitize_cve),
-        'nist_gen':  (nistoption, nistarg, [1, 3, 4, 5], sanitize_general),
-        'bz_sel':    (bazaarx, bazaarargx, [4], sanitize_general),
-        'bz_days':   (bazaarx, bazaarargx, [6], sanitize_general),
+    _CLI_ARGVALUES = {
+        'virustotalargx': virustotalargx,
+        'haargx': haargx,
+        'malhash': malhash,
+        'polyargx': polyargx,
+        'bazaarargx': bazaarargx,
+        'triageargx': triageargx,
+        'alienargsx': alienargsx,
+        'malpediaargx': malpediaargx,
+        'hausargx': hausargx,
+        'ipargx': ipargx,
+        'shodanargx': shodanargx,
+        'abuseipdbargx': abuseipdbargx,
+        'greynoiseargx': greynoiseargx,
+        'whoisargx': whoisargx,
+        'crtshargx': crtshargx,
+        'urlscanioargx': urlscanioargx,
+        'vulncheckarg': vulncheckarg,
+        'nistarg': nistarg,
     }
 
-    for flag, arg, opts, validator in _CLI_VALIDATORS.values():
+    _CLI_VALIDATORS = {
+        'vt_hash':   (virustotaloptionx, 'virustotalargx', [8, 12], sanitize_hash),
+        'vt_url':    (virustotaloptionx, 'virustotalargx', [5], sanitize_url),
+        'vt_ip':     (virustotaloptionx, 'virustotalargx', [6], sanitize_ip),
+        'vt_domain': (virustotaloptionx, 'virustotalargx', [7], sanitize_domain),
+        'vt_path':   (virustotaloptionx, 'virustotalargx', [1, 2, 3, 4, 9, 10, 11, 13, 14, 18], sanitize_path),
+        'vt_hunt':   (virustotaloptionx, 'virustotalargx', [15, 16, 17], sanitize_general),
+        'ha_hp':     (haoptionx, 'haargx', [1, 2, 3, 4, 5], sanitize_hash_or_path),
+        'ha_hash':   (haoptionx, 'haargx', [11], sanitize_hash),
+        'ha_path':   (haoptionx, 'haargx', [6, 7, 8, 9, 10, 12, 13], sanitize_path),
+        'ml_hash':   (mallist, 'malhash', [1], sanitize_hash),
+        'ml_type':   (mallist, 'malhash', [8], sanitize_general),
+        'poly_hash': (polyoptionx, 'polyargx', [1, 3], sanitize_hash),
+        'poly_path': (polyoptionx, 'polyargx', [2, 4], sanitize_path),
+        'poly_ip':   (polyoptionx, 'polyargx', [5], sanitize_ip),
+        'poly_dom':  (polyoptionx, 'polyargx', [6], sanitize_domain),
+        'poly_url':  (polyoptionx, 'polyargx', [7], sanitize_url),
+        'poly_gen':  (polyoptionx, 'polyargx', [8], sanitize_general),
+        'bz_hash':   (bazaarx, 'bazaarargx', [1, 3, 5], sanitize_hash),
+        'bz_tag':    (bazaarx, 'bazaarargx', [2, 8], sanitize_tag),
+        'bz_path':   (bazaarx, 'bazaarargx', [11, 12], sanitize_path),
+        'bz_gen':    (bazaarx, 'bazaarargx', [7, 9, 13], sanitize_general),
+        'tr_gen':    (triagex, 'triageargx', [1], sanitize_general),
+        'tr_id':     (triagex, 'triageargx', [2, 5, 6, 7], sanitize_general),
+        'tr_path':   (triagex, 'triageargx', [3, 8, 9], sanitize_path),
+        'tr_url':    (triagex, 'triageargx', [4], sanitize_url),
+        'al_ip':     (alienx, 'alienargsx', [2], sanitize_ip),
+        'al_domain': (alienx, 'alienargsx', [3], sanitize_domain),
+        'al_hash':   (alienx, 'alienargsx', [4], sanitize_hash),
+        'al_url':    (alienx, 'alienargsx', [5], sanitize_url),
+        'mp_hash':   (malpediax, 'malpediaargx', [7], sanitize_hash),
+        'mp_gen':    (malpediax, 'malpediaargx', [4, 6, 8], sanitize_general),
+        'uh_hash':   (hausoptionx, 'hausargx', [1, 2], sanitize_hash),
+        'uh_url':    (hausoptionx, 'hausargx', [3], sanitize_url),
+        'uh_tag':    (hausoptionx, 'hausargx', [4, 5], sanitize_tag),
+        'uh_batch':  (hausoptionx, 'hausargx', [8], sanitize_path),
+        'ip_addr':   (ipoptionx, 'ipargx', [1, 2, 3, 4, 5, 6, 7], sanitize_ip),
+        'ip_batch':  (ipoptionx, 'ipargx', [8], sanitize_path),
+        'sh_ip':     (shodanoptionx, 'shodanargx', [1], sanitize_ip),
+        'sh_gen':    (shodanoptionx, 'shodanargx', [2], sanitize_general),
+        'ab_ip':     (abuseipdbx, 'abuseipdbargx', [1], sanitize_ip),
+        'gn_ip':     (greynoisex, 'greynoiseargx', [1], sanitize_ip),
+        'wh_domain': (whoisx, 'whoisargx', [1], sanitize_domain),
+        'ct_domain': (crtshx, 'crtshargx', [1, 2], sanitize_domain),
+        'wh_ip':     (whoisx, 'whoisargx', [2], sanitize_ip),
+        'us_url':    (urlscaniox, 'urlscanioargx', [1], sanitize_url),
+        'us_uuid':   (urlscaniox, 'urlscanioargx', [2], sanitize_uuid),
+        'us_gen':    (urlscaniox, 'urlscanioargx', [3], sanitize_general),
+        'us_domain': (urlscaniox, 'urlscanioargx', [4], sanitize_domain),
+        'us_ip':     (urlscaniox, 'urlscanioargx', [5], sanitize_ip),
+        'vc_cve':    (vulncheckoption, 'vulncheckarg', [3, 7, 8], sanitize_cve),
+        'nist_cve':  (nistoption, 'nistarg', [2], sanitize_cve),
+        'nist_gen':  (nistoption, 'nistarg', [1, 3, 4, 5], sanitize_general),
+        'bz_sel':    (bazaarx, 'bazaarargx', [4], sanitize_general),
+        'bz_days':   (bazaarx, 'bazaarargx', [6], sanitize_general),
+    }
+
+    for flag, argname, opts, validator in _CLI_VALIDATORS.values():
+        arg = _CLI_ARGVALUES.get(argname)
         if flag in opts and arg:
-            _, err = validator(arg)
+            clean, err = validator(arg)
             if err:
                 print(f"\nInput validation error: {err}")
                 exit(1)
+            _CLI_ARGVALUES[argname] = clean
+
+    virustotalargx = _CLI_ARGVALUES['virustotalargx']
+    haargx = _CLI_ARGVALUES['haargx']
+    malhash = _CLI_ARGVALUES['malhash']
+    polyargx = _CLI_ARGVALUES['polyargx']
+    bazaarargx = _CLI_ARGVALUES['bazaarargx']
+    triageargx = _CLI_ARGVALUES['triageargx']
+    alienargsx = _CLI_ARGVALUES['alienargsx']
+    malpediaargx = _CLI_ARGVALUES['malpediaargx']
+    hausargx = _CLI_ARGVALUES['hausargx']
+    ipargx = _CLI_ARGVALUES['ipargx']
+    shodanargx = _CLI_ARGVALUES['shodanargx']
+    abuseipdbargx = _CLI_ARGVALUES['abuseipdbargx']
+    greynoiseargx = _CLI_ARGVALUES['greynoiseargx']
+    whoisargx = _CLI_ARGVALUES['whoisargx']
+    crtshargx = _CLI_ARGVALUES['crtshargx']
+    urlscanioargx = _CLI_ARGVALUES['urlscanioargx']
+    vulncheckarg = _CLI_ARGVALUES['vulncheckarg']
+    nistarg = _CLI_ARGVALUES['nistarg']
 
     if correlate_hashx:
-        _, err = sanitize_hash(correlate_hashx)
+        correlate_hashx, err = sanitize_hash(correlate_hashx)
         if err:
             print(f"\nInput validation error: {err}")
             exit(1)
 
     if extract_iocsx and not extract_iocsx.startswith(('http://', 'https://')):
-        _, err = sanitize_path(extract_iocsx)
+        extract_iocsx, err = sanitize_path(extract_iocsx)
         if err:
             print(f"\nInput validation error: {err}")
             exit(1)
@@ -591,6 +709,18 @@ def main():
             print(f"\nInput validation error (--yara-target): {err}")
             exit(1)
 
+    if peinfox:
+        peinfox, err = sanitize_path(peinfox)
+        if err:
+            print(f"\nInput validation error (--peinfo): {err}")
+            exit(1)
+
+    if sigcheckx:
+        sigcheckx, err = sanitize_path(sigcheckx)
+        if err:
+            print(f"\nInput validation error (--sigcheck): {err}")
+            exit(1)
+
     ffpname = ''
     if (virustotaloptionx in range(1, 5)):
         ffpname = virustotalargx
@@ -604,42 +734,51 @@ def main():
     INVALID_ARG_CONDITIONS = [
         args.haoption not in optval10,
         args.alienvault not in optval5,
-        args.hausoption not in optval8,
+        args.hausoption not in range(9),
         args.polyoption not in optval6,
         args.bazaar not in optval7,
-        args.malpedia not in optval6,
+        args.malpedia not in optval11,
         args.triage not in optval8,
         args.backg not in optval,
-        args.malsharelist not in optval8,
+        args.malsharelist not in range(9),
         args.virustotaloption not in optval9,
         args.vtpubpremium not in optval,
         args.ipoption not in range(9),
         args.androidoption not in optval5,
         args.shodanoption not in range(3),
         args.abuseipdb not in range(2),
-        args.greynoise not in range(3),
+        args.greynoise not in range(2),
         args.whois not in range(3),
+        args.crtsh not in range(3),
         args.urlscanio not in range(6),
+        args.nistoption not in range(6),
+        args.vulncheckoption not in range(9),
     ]
 
     MIN_OPTIONS = [
         virustotaloptionx in range(5, 10) and virustotalargx,
+        virustotaloptionx in (15, 19, 20),
         virustotaloptionx and virustotalargx, args.direct, fprovided,
         haoptionx and haargx, mallist, args.malsharehash, args.hausoption,
         polyoptionx and polyargx,
         androidoptionx in (1, 2, 3) or (androidoptionx and androidargx), alienx and alienargsx,
-        malpediax, bazaarx, triagex and triageargx,
+        malpediax and (malpediax not in MALPEDIA_NEEDS_ARG or malpediaargx),
+        bazaarx and (bazaarx not in BAZAAR_NEEDS_ARG or bazaarargx),
+        triagex and triageargx,
         ipoptionx and ipargx,
         nistoption and nistarg,
-        vulncheckoption,
+        vulncheckoption and (vulncheckoption not in VULNCHECK_NEEDS_ARG or vulncheckarg),
         shodanoptionx and shodanargx,
         abuseipdbx and abuseipdbargx,
         greynoisex and greynoiseargx,
         whoisx and whoisargx,
+        crtshx and crtshargx,
         urlscaniox and urlscanioargx,
         correlate_hashx,
         extract_iocsx,
         yara_rulesx and yara_targetx,
+        peinfox,
+        sigcheckx,
     ]
 
     if any(INVALID_ARG_CONDITIONS) or not any(MIN_OPTIONS):
@@ -659,7 +798,7 @@ def main():
     haus = URLHausExtractor(URLHAUSAPI)
     android = AndroidExtractor(hybrid, virustotal)
     ipinfo = IPInfoExtractor(IPINFOAPI)
-    bgpview = BGPViewExtractor()
+    crtsh = CrtShExtractor()
     nist = NISTExtractor()
     vulncheck = VulnCheckExtractor(VULNCHECKAPI)
     shodan_ext = ShodanExtractor(SHODANAPI)
@@ -690,6 +829,13 @@ def main():
         {
             "VirusTotal": virustotal,
             "AlienVault": alien,
+        }
+    )
+    multipleipall = MultipleIPExtractor(
+        {
+            "IPInfo": ipinfo,
+            "VirusTotal": virustotal,
+            "AlienVault": alien,
             "Shodan": shodan_ext,
             "AbuseIPDB": abuseipdb_ext,
             "GreyNoise": greynoise_ext,
@@ -705,9 +851,6 @@ def main():
     query = haargx
     if haoptionx in range(6) and haargx and os.path.isfile(haargx):
         query = calchash(haargx)
-
-    def ha_show_and_down(haargx, xx=0):
-        hybrid.downhash(haargx)
 
     OPTIONS_MAPS = [
         {
@@ -742,7 +885,10 @@ def main():
                 4: (bazaar.bazaar_lastsamples, [bazaarargx]),
                 5: (bazaar.bazaar_download, [bazaarargx]),
                 11: (bazaar.bazaar_batchcheck, [bazaarargx]),
-                12: (bazaar.bazaar_dircheck, [bazaarargx])
+                12: (bazaar.bazaar_dircheck, [bazaarargx]),
+                13: (bazaar.bazaar_yara, [bazaarargx]),
+                14: (bazaar.bazaar_yaradownload, []),
+                15: (bazaar.bazaar_yaraextract, [])
             }
         },
         {
@@ -772,14 +918,15 @@ def main():
         {
             'flag': malpediax,
             'actions': {
-                1: (malpedia.malpedia_families, []),
+                1: (malpedia.malpedia_families_meta, [malpediaargx]),
                 2: (malpedia.malpedia_actors, []),
                 3: (malpedia.malpedia_payloads, []),
                 4: (malpedia.malpedia_get_actor, [malpediaargx]),
                 5: (malpedia.malpedia_families, []),
                 6: (malpedia.malpedia_get_family, [malpediaargx]),
                 7: (malpedia.malpedia_get_sample, [malpediaargx]),
-                8: (malpedia.malpedia_get_yara, [malpediaargx])
+                8: (malpedia.malpedia_get_yara, [malpediaargx]),
+                9: (malpedia.malpedia_get_yara_ruleset, [malpediaargx])
             }
         },
         {
@@ -797,7 +944,14 @@ def main():
                 10: (virustotal.vtbatchcheck, [virustotalargx, 1]),
                 11: (virustotal.vtbatchcheck, [virustotalargx, 0]),
                 12: (virustotal.vtbehavior, [virustotalargx]),
-                13: (virustotal.vtlargefile, [virustotalargx])
+                13: (virustotal.vtlargefile, [virustotalargx]),
+                14: (virustotal.vtretrohuntsubmit, [virustotalargx]),
+                15: (virustotal.vtretrohuntlist, [virustotalargx]),
+                16: (virustotal.vtretrohuntstatus, [virustotalargx]),
+                17: (virustotal.vtretrohuntmatches, [virustotalargx]),
+                18: (virustotal.vtlivehuntcreate, [virustotalargx]),
+                19: (virustotal.vtlivehuntlist, []),
+                20: (virustotal.vtlivehuntnotifications, [])
             }
         },
         {
@@ -817,13 +971,9 @@ def main():
                 8: (hybrid.hafilecheck, [haargx], {'xx': 2}),
                 9: (hybrid.hafilecheck, [haargx], {'xx': 3}),
                 10: (hybrid.hafilecheck, [haargx], {'xx': 4}),
-                11: (ha_show_and_down, [haargx], {'xx': 0}),
-                12: (ha_show_and_down, [haargx], {'xx': 1}),
-                13: (ha_show_and_down, [haargx], {'xx': 2}),
-                14: (ha_show_and_down, [haargx], {'xx': 3}),
-                15: (ha_show_and_down, [haargx], {'xx': 4}),
-                16: (hybrid.habatchcheck, [haargx]),
-                17: (hybrid.habatchdircheck, [haargx])
+                11: (hybrid.downhash, [haargx]),
+                12: (hybrid.habatchcheck, [haargx]),
+                13: (hybrid.habatchdircheck, [haargx])
             }
         },
         {
@@ -834,8 +984,9 @@ def main():
                 3: (malshare.malsharelastlist, [maltype]),
                 4: (malshare.malsharelastlist, [maltype]),
                 5: (malshare.malsharelastlist, [maltype]),
-                6: (malshare.malsharelastlist, [maltype]),
-                7: (malshare.malsharelastlist, [maltype])
+                6: (malshare.malsharetypes, []),
+                7: (malshare.malsharelastlist, [maltype]),
+                8: (malshare.malsharetypelist, [malhash])
             }
         },
         {
@@ -847,7 +998,8 @@ def main():
                 4: (haus.haustagsearchroutine, [hausargx]),
                 5: (haus.haussigsearchroutine, [hausargx]),
                 6: (haus.hauspayloadslist, []),
-                7: (haus.hausgetbatch, [])
+                7: (haus.hausgetbatch, []),
+                8: (haus.hausbatchcheck, [hausargx])
             }
         },
         {
@@ -864,12 +1016,12 @@ def main():
             'flag': ipoptionx,
             'actions': {
                 1: (ipinfo.get_ip_details, [ipargx]),
-                2: (bgpview.get_ip_details, [ipargx]),
+                2: (bgpview_removed, [ipargx]),
                 3: (multipleip.get_multiple_ip_details, [ipargx]),
                 4: (shodan_ext.shodan_ip, [ipargx]),
                 5: (abuseipdb_ext.check_ip, [ipargx]),
                 6: (greynoise_ext.quick_check, [ipargx]),
-                7: (multipleip.get_multiple_ip_details, [ipargx]),
+                7: (multipleipall.get_multiple_ip_details, [ipargx]),
                 8: (virustotal.vtipbatchcheck, [ipargx, vtpubpremiumx])
             }
         },
@@ -924,6 +1076,13 @@ def main():
             }
         },
         {
+            'flag': crtshx,
+            'actions': {
+                1: (crtsh.crtsh_subdomains, [crtshargx]),
+                2: (crtsh.crtsh_certificates, [crtshargx])
+            }
+        },
+        {
             'flag': urlscaniox,
             'actions': {
                 1: (urlscanio_ext.urlscanio_submit, [urlscanioargx]),
@@ -935,27 +1094,95 @@ def main():
         },
     ]
 
-    if correlate_hashx:
-        multiplehash.get_multiple_hash_details(correlate_hashx)
+    def emit_enrichment(prompt_type='threat', captured=''):
+        if not llm_enricher:
+            return
+        from malwoverview.utils.llm import records_to_prompt_text
+        payload = records_to_prompt_text(collector.records) or captured
+        if not payload:
+            return
+
+        if is_text_output():
+            llm_enricher.print_enrichment(payload, prompt_type)
+            return
+
+        analysis = llm_enricher.enrich(payload, prompt_type)
+        if analysis:
+            collector.add({
+                'type': 'llm_enrichment',
+                'provider': llm_enricher.provider,
+                'model': getattr(llm_enricher, llm_enricher.provider + '_model', ''),
+                'prompt_type': prompt_type,
+                'assessment': analysis,
+            })
+
+    def run_local(func, *func_args, **func_kwargs):
+        import io as _io
+        _capture_buf = None
+        _orig_stdout = sys.stdout
+        if not is_text_output():
+            _capture_buf = _io.StringIO()
+            sys.stdout = _capture_buf
+        elif llm_enricher:
+            _capture_buf = _io.StringIO()
+            sys.stdout = _TeeWriter(_orig_stdout, _capture_buf)
+
+        try:
+            func(*func_args, **func_kwargs)
+        finally:
+            if _capture_buf:
+                sys.stdout = _orig_stdout
+
+        if _capture_buf is None:
+            return ''
+
+        captured = _capture_buf.getvalue()
+        if not is_text_output() and not collector.records:
+            _diagnostic = strip_terminal_escapes(captured).strip()
+            if _diagnostic:
+                print(_diagnostic, file=sys.stderr)
+        return captured.strip()
+
+    def finish_local(captured=''):
+        emit_enrichment('threat', captured)
         collector.finalize()
-        printr()
+        emit_report()
+        if is_text_output():
+            printr()
         exit(0)
+
+    def emit_report():
+        if not (args.report_format and args.report_file):
+            return
+        from malwoverview.utils.report import ReportGenerator
+        report = ReportGenerator(collector.records, "Malwoverview Report")
+        if args.report_format == 'html':
+            report.to_html(args.report_file)
+        elif args.report_format == 'pdf':
+            report.to_pdf(args.report_file)
+
+    if correlate_hashx:
+        finish_local(run_local(multiplehash.get_multiple_hash_details, correlate_hashx))
 
     if extract_iocsx:
         from malwoverview.utils.ioc_extract import IOCExtractor
         ioc_extractor = IOCExtractor()
-        ioc_extractor.extract_and_display(extract_iocsx)
-        collector.finalize()
-        printr()
-        exit(0)
+        finish_local(run_local(ioc_extractor.extract_and_display, extract_iocsx))
 
     if yara_rulesx and yara_targetx:
         from malwoverview.modules.yara_scan import YaraScanner
         yara_scanner = YaraScanner(yara_rulesx)
-        yara_scanner.scan_and_display(yara_targetx)
-        collector.finalize()
-        printr()
-        exit(0)
+        finish_local(run_local(yara_scanner.scan_and_display, yara_targetx))
+
+    if peinfox:
+        from malwoverview.modules.pe_scan import PEScanner
+        pe_scanner = PEScanner(args.entropy_threshold, check_signature=not args.no_signature, verify_mode=args.sig_verify_mode)
+        finish_local(run_local(pe_scanner.scan_and_display, peinfox))
+
+    if sigcheckx:
+        from malwoverview.modules.pe_scan import PEScanner
+        sig_scanner = PEScanner(args.entropy_threshold, check_signature=not args.no_signature, verify_mode=args.sig_verify_mode)
+        finish_local(run_local(sig_scanner.signature_and_display, sigcheckx))
 
     for option_map in OPTIONS_MAPS:
         flag = option_map['flag']
@@ -972,7 +1199,10 @@ def main():
         import io as _io
         _capture_buf = None
         _orig_stdout = sys.stdout
-        if llm_enricher:
+        if not is_text_output():
+            _capture_buf = _io.StringIO()
+            sys.stdout = _capture_buf
+        elif llm_enricher:
             _capture_buf = _io.StringIO()
             sys.stdout = _TeeWriter(_orig_stdout, _capture_buf)
 
@@ -991,28 +1221,29 @@ def main():
 
             if process_results and result:
                 nist.print_results(result, verbose=False, color_scheme=args.backg, max_cves=nistncves)
+        except requests.exceptions.RequestException as e:
+            result = False
+            print(mycolors.foreground.error(cv.bkg) + network_failure_message(e) + mycolors.reset)
         finally:
             if _capture_buf:
                 sys.stdout = _orig_stdout
 
-        if llm_enricher and _capture_buf:
-            captured = _capture_buf.getvalue().strip()
-            if captured:
-                _prompt_type = 'cve' if (process_results or flag == vulncheckoption) else 'threat'
-                llm_enricher.print_enrichment(captured, _prompt_type)
+        if not is_text_output() and _capture_buf is not None and not collector.records:
+            _diagnostic = strip_terminal_escapes(_capture_buf.getvalue()).strip()
+            if _diagnostic:
+                print(_diagnostic, file=sys.stderr)
+
+        if llm_enricher:
+            _prompt_type = 'cve' if (process_results or flag == vulncheckoption) else 'threat'
+            emit_enrichment(_prompt_type, _capture_buf.getvalue().strip() if _capture_buf else '')
 
         if cv.output_format != 'text':
             collector.finalize()
 
-        if args.report_format and args.report_file:
-            from malwoverview.utils.report import ReportGenerator
-            report = ReportGenerator(collector.records, "Malwoverview Report")
-            if args.report_format == 'html':
-                report.to_html(args.report_file)
-            elif args.report_format == 'pdf':
-                report.to_pdf(args.report_file)
+        emit_report()
 
-        printr()
+        if is_text_output():
+            printr()
         status = 0
         if result is False:
             status = 1

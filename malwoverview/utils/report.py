@@ -138,7 +138,7 @@ class ReportGenerator:
             import weasyprint
         except ImportError:
             print(
-                f"{mycolors.foreground.yellow}"
+                f"{mycolors.foreground.warning(cv.bkg)}"
                 "Install weasyprint for PDF support: "
                 "pip install malwoverview[pdf]"
                 f"{mycolors.reset}"

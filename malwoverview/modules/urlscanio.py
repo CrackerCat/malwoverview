@@ -1,25 +1,37 @@
 import malwoverview.modules.configvars as cv
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import (
+    mycolors, printr, strip_json_escapes, bullet, column, fit, pad, wrap_field,
+)
 from malwoverview.utils.session import create_session
 from malwoverview.utils.cache import cached
 from malwoverview.utils.output import collector, is_text_output
 from urllib.parse import quote
+import datetime
 import json
 import time
 
 
-# Centralized table column widths
-COL_DOMAIN = 45
-COL_IP = 18
-COL_COUNTRY = 9
-COL_STATUS = 8
-COL_ASN = 10
-COL_SCORE = 7
-COL_DATE = 22
-COL_UUID = 36
-TABLE_WIDTH = COL_DOMAIN + COL_IP + COL_COUNTRY + COL_STATUS + COL_ASN + COL_SCORE + COL_DATE + COL_UUID
+REPORT_WIDTH = 100
+FIELD_GUTTER = 4
+
+VERDICT_FIELDS = ('Malicious', 'Verdict Score', 'Categories', 'Tags', 'Brands')
+CLEAN_VALUES = ('None', 'N/A', 'False', '0')
+PIVOT_FIELDS = {'Contacted IPs': 'accent', 'Contacted Domains': 'warning'}
+FIELD_BREAKS = ('Contacted IPs',)
+
+COL_GUTTER = 2
+COL_DOMAIN_MAX = 44
+COL_IP_MAX = len("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
+COL_CAPS = {'domain': COL_DOMAIN_MAX, 'ip': COL_IP_MAX}
+
+SEARCH_HEADERS = ("Domain", "IP", "Country", "Status", "ASN", "Age(d)", "Date", "UUID")
+SEARCH_KEYS = ('domain', 'ip', 'country', 'status', 'asn', 'age', 'date', 'uuid')
+
+AGE_FRESH_DAYS = 30
+AGE_RECENT_DAYS = 365
 
 MAX_SEARCH_RESULTS = 30
+MAX_CERTIFICATES = 5
 
 
 class URLScanIOExtractor():
@@ -44,35 +56,102 @@ class URLScanIOExtractor():
             return {'error': 'Rate limit exceeded. Please wait and try again.'}
         return None
 
-    def _print_search_header(self):
-        header = (
-            mycolors.foreground.info(cv.bkg)
-            + "Domain".ljust(COL_DOMAIN)
-            + "IP".ljust(COL_IP)
-            + "Country".ljust(COL_COUNTRY)
-            + "Status".ljust(COL_STATUS)
-            + "ASN".ljust(COL_ASN)
-            + "Score".ljust(COL_SCORE)
-            + "Date".ljust(COL_DATE)
-            + "UUID"
+    def _search_widths(self, rows):
+        widths = {}
+        for index, key in enumerate(SEARCH_KEYS):
+            header = SEARCH_HEADERS[index]
+            values = [row[index] for row in rows]
+            last = index == len(SEARCH_KEYS) - 1
+            widths[key] = column(
+                header, values,
+                cap=COL_CAPS.get(key),
+                gutter=0 if last else COL_GUTTER,
+            )
+        widths['total'] = sum(widths[key] for key in SEARCH_KEYS)
+        return widths
+
+    def _status_color(self, status):
+        if status.isdigit():
+            code = int(status)
+            if 200 <= code < 300:
+                return mycolors.foreground.ok(cv.bkg)
+            if 500 <= code < 600:
+                return mycolors.foreground.error(cv.bkg)
+            return mycolors.foreground.warning(cv.bkg)
+        return mycolors.foreground.neutral(cv.bkg)
+
+    def _field_color(self, name, value):
+        pivot = PIVOT_FIELDS.get(name)
+        if pivot:
+            return getattr(mycolors.foreground, pivot)(cv.bkg)
+        if name in VERDICT_FIELDS:
+            if value in CLEAN_VALUES:
+                return mycolors.foreground.ok(cv.bkg)
+            return mycolors.foreground.error(cv.bkg)
+        return mycolors.foreground.success(cv.bkg)
+
+    def _print_fields(self, fields, value_color=None):
+        width = max(len(name) for name in fields) + len(':') + FIELD_GUTTER
+        for position, (name, value) in enumerate(fields.items()):
+            if position and name in FIELD_BREAKS:
+                print()
+            print(
+                mycolors.foreground.info(cv.bkg) + pad(name + ':', width)
+                + (value_color or self._field_color(name, value))
+                + wrap_field(value, REPORT_WIDTH, width)
+                + mycolors.reset
+            )
+
+    def _certificate_date(self, value):
+        try:
+            stamp = int(value)
+        except (TypeError, ValueError):
+            return str(value)
+        try:
+            return datetime.datetime.fromtimestamp(
+                stamp, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        except (OSError, OverflowError, ValueError):
+            return str(value)
+
+    def _age_color(self, age):
+        if not age.isdigit():
+            return mycolors.foreground.neutral(cv.bkg)
+        days = int(age)
+        if days < AGE_FRESH_DAYS:
+            return mycolors.foreground.error(cv.bkg)
+        if days < AGE_RECENT_DAYS:
+            return mycolors.foreground.warning(cv.bkg)
+        return mycolors.foreground.ok(cv.bkg)
+
+    def _print_search_title(self, width):
+        print()
+        print(mycolors.reset + "URLSCAN.IO SEARCH REPORT".center(width))
+        print(mycolors.foreground.neutral(cv.bkg) + (width * '-') + mycolors.reset)
+
+    def _print_search_header(self, widths):
+        structure = mycolors.foreground.neutral(cv.bkg)
+        print()
+        print(
+            structure
+            + "".join(pad(SEARCH_HEADERS[i], widths[key])
+                      for i, key in enumerate(SEARCH_KEYS))
             + mycolors.reset
         )
-        print()
-        print(header)
-        print((TABLE_WIDTH * '-'))
+        print(structure + (widths['total'] * '-') + mycolors.reset)
 
-    def _print_search_row(self, page_domain, page_ip, page_country, page_status, page_asn, verdict_score, task_time, task_uuid):
-        row = (
-            page_domain[:COL_DOMAIN - 2].ljust(COL_DOMAIN)
-            + page_ip[:COL_IP - 2].ljust(COL_IP)
-            + page_country[:COL_COUNTRY - 2].ljust(COL_COUNTRY)
-            + page_status[:COL_STATUS - 2].ljust(COL_STATUS)
-            + page_asn[:COL_ASN - 2].ljust(COL_ASN)
-            + verdict_score[:COL_SCORE - 2].ljust(COL_SCORE)
-            + task_time.ljust(COL_DATE)
-            + task_uuid
+    def _print_search_row(self, row, widths):
+        domain, ip, country, status, asn, age, date, uuid = row
+        print(
+            mycolors.foreground.info(cv.bkg) + pad(fit(domain, widths['domain'] - COL_GUTTER), widths['domain'])
+            + mycolors.foreground.accent(cv.bkg) + pad(fit(ip, widths['ip'] - COL_GUTTER), widths['ip'])
+            + mycolors.foreground.success(cv.bkg) + pad(country, widths['country'])
+            + self._status_color(status) + pad(status, widths['status'])
+            + mycolors.foreground.info(cv.bkg) + pad(asn, widths['asn'])
+            + self._age_color(age) + pad(age, widths['age'])
+            + mycolors.foreground.success(cv.bkg) + pad(date, widths['date'])
+            + mycolors.foreground.accent(cv.bkg) + uuid
+            + mycolors.reset
         )
-        print(row)
 
     def urlscanio_submit(self, url_to_scan):
         self.requestURLSCANIOAPI()
@@ -93,9 +172,8 @@ class URLScanIOExtractor():
 
             if is_text_output():
                 print()
-                print((mycolors.reset + "URLSCAN.IO SUBMISSION REPORT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
+                print((mycolors.reset + "URLSCAN.IO SUBMISSION REPORT".center(REPORT_WIDTH)))
+                print(mycolors.foreground.neutral(cv.bkg) + (REPORT_WIDTH * '-') + mycolors.reset)
 
             err = self._handle_status(response)
             if err:
@@ -103,7 +181,7 @@ class URLScanIOExtractor():
                     print(mycolors.foreground.error(cv.bkg) + f"\n{err['error']}\n" + mycolors.reset)
                 return
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
 
             if 'message' in data and 'uuid' not in data:
                 if is_text_output():
@@ -140,7 +218,9 @@ class URLScanIOExtractor():
                     print(mycolors.foreground.info(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
 
                 print()
-                print(mycolors.foreground.info(cv.bkg) + f"{'Note:'.ljust(COLSIZE)}" + "\t" + mycolors.reset + "Results take ~15 seconds. Use -u 2 -U <uuid> to retrieve.")
+                print(bullet("A scan takes about 15 seconds. Retrieve it with -u 2 -U %s"
+                             % scan_uuid,
+                             REPORT_WIDTH, mycolors.foreground.neutral(cv.bkg)))
 
         except ValueError:
             if is_text_output():
@@ -167,7 +247,7 @@ class URLScanIOExtractor():
             if err:
                 return err
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
             return data
 
         except ValueError:
@@ -183,9 +263,8 @@ class URLScanIOExtractor():
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "URLSCAN.IO SCAN RESULT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
+                print((mycolors.reset + "URLSCAN.IO SCAN RESULT".center(REPORT_WIDTH)))
+                print(mycolors.foreground.neutral(cv.bkg) + (REPORT_WIDTH * '-') + mycolors.reset)
 
             if 'error' in data:
                 if is_text_output():
@@ -206,7 +285,7 @@ class URLScanIOExtractor():
             page_ip = str(page.get('ip', 'N/A'))
             page_country = str(page.get('country', 'N/A'))
             page_server = str(page.get('server', 'N/A'))
-            page_title = str(page.get('title', 'N/A'))[:80]
+            page_title = str(page.get('title', 'N/A'))
             page_status = str(page.get('status', 'N/A'))
             page_mime = str(page.get('mimeType', 'N/A'))
             page_asn = str(page.get('asn', 'N/A'))
@@ -220,6 +299,7 @@ class URLScanIOExtractor():
             score = str(overall_verdict.get('score', 0))
             verdict_categories = ', '.join(overall_verdict.get('categories', [])) or 'None'
             verdict_tags = ', '.join(overall_verdict.get('tags', [])) or 'None'
+            verdict_brands = ', '.join(overall_verdict.get('brands', [])) or 'None'
 
             ips_list = lists.get('ips', [])
             domains_list = lists.get('domains', [])
@@ -252,6 +332,7 @@ class URLScanIOExtractor():
                 'verdict_score': score,
                 'verdict_categories': verdict_categories,
                 'verdict_tags': verdict_tags,
+                'verdict_brands': verdict_brands,
                 'contacted_ips': ips_str,
                 'contacted_domains': domains_str,
                 'countries': countries_str
@@ -278,31 +359,31 @@ class URLScanIOExtractor():
                     'Verdict Score': score,
                     'Categories': verdict_categories,
                     'Tags': verdict_tags,
+                    'Brands': verdict_brands,
                     'Contacted IPs': ips_str if ips_str else 'None',
                     'Contacted Domains': domains_str if domains_str else 'None',
                     'Countries': countries_str,
                 }
 
-                COLSIZE = max(len(f) for f in fields.keys()) + 3
-
-                for field, value in fields.items():
-                    print(mycolors.foreground.info(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
+                self._print_fields(fields)
 
                 certs = data.get('lists', {}).get('certificates', [])
                 if certs:
                     print()
                     print(mycolors.foreground.info(cv.bkg) + "SSL Certificates:" + mycolors.reset)
-                    CERT_COLSIZE = 16
-                    for cert in certs[:5]:
-                        subject = str(cert.get('subjectName', 'N/A'))
-                        issuer = str(cert.get('issuer', 'N/A'))
-                        valid_from = str(cert.get('validFrom', 'N/A'))
-                        valid_to = str(cert.get('validTo', 'N/A'))
+                    for cert in certs[:MAX_CERTIFICATES]:
                         print()
-                        print(mycolors.foreground.info(cv.bkg) + "  Subject:".ljust(CERT_COLSIZE) + "\t" + mycolors.reset + subject)
-                        print(mycolors.foreground.info(cv.bkg) + "  Issuer:".ljust(CERT_COLSIZE) + "\t" + mycolors.reset + issuer)
-                        print(mycolors.foreground.info(cv.bkg) + "  Valid From:".ljust(CERT_COLSIZE) + "\t" + mycolors.reset + valid_from)
-                        print(mycolors.foreground.info(cv.bkg) + "  Valid To:".ljust(CERT_COLSIZE) + "\t" + mycolors.reset + valid_to)
+                        self._print_fields({
+                            '  Subject': str(cert.get('subjectName', 'N/A')),
+                            '  Issuer': str(cert.get('issuer', 'N/A')),
+                            '  Valid From': self._certificate_date(cert.get('validFrom', 'N/A')),
+                            '  Valid To': self._certificate_date(cert.get('validTo', 'N/A')),
+                        }, value_color=mycolors.foreground.neutral(cv.bkg))
+                    if len(certs) > MAX_CERTIFICATES:
+                        print()
+                        print(bullet("%d of %d certificates shown."
+                                     % (MAX_CERTIFICATES, len(certs)),
+                                     REPORT_WIDTH, mycolors.foreground.neutral(cv.bkg)))
 
         except Exception as e:
             if is_text_output():
@@ -322,28 +403,23 @@ class URLScanIOExtractor():
             session = create_session(headers)
             response = session.get(url, params=params, timeout=30)
 
-            if is_text_output():
-                print()
-                print((mycolors.reset + "URLSCAN.IO SEARCH REPORT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
-
             err = self._handle_status(response)
             if err:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + f"\n{err['error']}\n" + mycolors.reset)
                 return
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
 
             results = data.get('results', [])
             if not results:
                 if is_text_output():
+                    self._print_search_title(self._search_widths([])['total'])
                     print(mycolors.foreground.error(cv.bkg) + "\nNo results found for this query.\n" + mycolors.reset)
                 return
 
-            if is_text_output():
-                self._print_search_header()
+            rows = []
 
             for result in results[:MAX_SEARCH_RESULTS]:
                 task = result.get('task', {})
@@ -357,8 +433,9 @@ class URLScanIOExtractor():
                 page_status = str(page.get('status', 'N/A'))
                 page_asn = str(page.get('asn', 'N/A'))
 
-                verdict_score = str(result.get('verdicts', {}).get('overall', {}).get('score', 0))
-                malicious = result.get('verdicts', {}).get('overall', {}).get('malicious', False)
+                page_age = page.get('domainAgeDays')
+                page_apex_age = page.get('apexDomainAgeDays')
+                age_cell = 'N/A' if page_age is None else str(page_age)
 
                 record = {
                     'uuid': task_uuid,
@@ -367,22 +444,45 @@ class URLScanIOExtractor():
                     'country': page_country,
                     'status_code': page_status,
                     'asn': page_asn,
-                    'verdict_score': verdict_score,
-                    'malicious': str(malicious),
+                    'domain_age_days': age_cell,
+                    'apex_domain_age_days': 'N/A' if page_apex_age is None else str(page_apex_age),
                     'scan_time': task_time,
                 }
                 collector.add(record)
 
-                if is_text_output():
-                    self._print_search_row(page_domain, page_ip, page_country, page_status, page_asn, verdict_score, task_time, task_uuid)
+                rows.append((page_domain, page_ip, page_country, page_status,
+                             page_asn, age_cell, task_time, task_uuid))
 
             total = data.get('total', len(results))
             if is_text_output():
+                widths = self._search_widths(rows)
+                self._print_search_title(widths['total'])
+                self._print_search_header(widths)
+                for row in rows:
+                    self._print_search_row(row, widths)
+
+                fresh = sum(1 for row in rows
+                            if row[5].isdigit() and int(row[5]) < AGE_FRESH_DAYS)
+
+                structure = mycolors.foreground.neutral(cv.bkg)
                 print()
                 if total > MAX_SEARCH_RESULTS:
-                    print(f"Showing {MAX_SEARCH_RESULTS} of {total} total results.")
+                    print(bullet("Showing %d of %d total results."
+                                 % (len(rows), total), widths['total'], structure))
+                    print(bullet("urlscan.io returned more matches than are shown. Narrow the "
+                                 "query to bring the interesting ones into the first %d."
+                                 % MAX_SEARCH_RESULTS, widths['total'], structure))
                 else:
-                    print(f"{len(results)} result(s) found.")
+                    print(bullet("%d result(s) found." % len(rows),
+                                 widths['total'], structure))
+                if fresh:
+                    print(bullet("Age(d) is the age of the scanned domain in days, as urlscan.io "
+                                 "reports it. %d of these were registered less than %d days ago."
+                                 % (fresh, AGE_FRESH_DAYS), widths['total'], structure))
+                print(bullet("The search endpoint carries no verdict. Use -u 2 with a UUID from "
+                             "the last column for the full scan result, which is where urlscan.io "
+                             "reports its score, categories and brands.",
+                             widths['total'], structure))
 
         except ValueError:
             if is_text_output():
