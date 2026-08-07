@@ -1,9 +1,12 @@
 import malwoverview.modules.configvars as cv
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, report_header
 from malwoverview.utils.session import create_session
 from malwoverview.utils.cache import cached
 from malwoverview.utils.output import collector, is_text_output
 import json
+
+
+REPORT_WIDTH = 100
 
 
 class AbuseIPDBExtractor():
@@ -45,13 +48,18 @@ class AbuseIPDBExtractor():
             if response.status_code == 429:
                 return {'error': 'Rate limit exceeded. Please wait and try again.'}
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
             return data
 
         except ValueError:
             return {'error': 'Error parsing JSON response from AbuseIPDB.'}
         except Exception as e:
             return {'error': str(e)}
+
+    def _label_color(self):
+        if cv.bkg == 1:
+            return mycolors.foreground.lightblue
+        return mycolors.foreground.blue
 
     def check_ip(self, ip):
         self.requestABUSEIPDBAPI()
@@ -61,9 +69,7 @@ class AbuseIPDBExtractor():
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "ABUSEIPDB IP REPORT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("ABUSEIPDB IP REPORT", REPORT_WIDTH))
 
             if 'error' in data:
                 if is_text_output():
@@ -119,7 +125,7 @@ class AbuseIPDBExtractor():
                         if score >= 50:
                             print(mycolors.foreground.error(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
                         else:
-                            print(mycolors.foreground.info(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
+                            print(self._label_color() + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
                     elif field == 'Total Reports':
                         try:
                             rcount = int(total_reports)
@@ -128,9 +134,9 @@ class AbuseIPDBExtractor():
                         if rcount > 0:
                             print(mycolors.foreground.error(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
                         else:
-                            print(mycolors.foreground.info(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
+                            print(self._label_color() + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
                     else:
-                        print(mycolors.foreground.info(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
+                        print(self._label_color() + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + value)
 
         except Exception as e:
             if is_text_output():

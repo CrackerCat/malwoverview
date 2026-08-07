@@ -1,7 +1,18 @@
-from malwoverview.utils.colors import mycolors, printr, printc
+from malwoverview.utils.colors import mycolors, printr, printc, strip_json_escapes, bullet, report_header
+from malwoverview.utils.output import collector, is_text_output
 import malwoverview.modules.configvars as cv
 
+IP_TABLE_WIDTH = 100
+
+
 class MultipleIPExtractor:
+    METHODS = {
+        "IPInfo": 'get_ip_details',
+        "Shodan": 'shodan_ip',
+        "AbuseIPDB": 'check_ip',
+        "GreyNoise": 'quick_check',
+    }
+
     def __init__(self, extractors):
         self.extractors = extractors
 
@@ -10,40 +21,25 @@ class MultipleIPExtractor:
             printc("A valid IP address is required.", mycolors.foreground.error(cv.bkg))
             return
 
-        for extractor in self.extractors:
-            extractor_obj = self.extractors[extractor]
-            if extractor == "IPInfo":
-                extractor_obj.get_ip_details(ip_address)
-            elif extractor == "BGPView":
-                extractor_obj.get_ip_details(ip_address)
-            elif extractor == "VirusTotal":
-                data = extractor_obj._raw_ip_info(ip_address)
-                self._get_info_virustotal(data.json())
-            elif extractor == "AlienVault":
-                data = extractor_obj._raw_ip_info(ip_address)
-                self._get_info_alienvault(data.json())
-            elif extractor in ("Shodan", "AbuseIPDB", "GreyNoise"):
-                try:
-                    extractor_obj.get_ip_details(ip_address) if hasattr(extractor_obj, 'get_ip_details') else None
-                    if not hasattr(extractor_obj, 'get_ip_details'):
-                        if extractor == "Shodan":
-                            extractor_obj.shodan_ip(ip_address)
-                        elif extractor == "AbuseIPDB":
-                            extractor_obj.check_ip(ip_address)
-                        elif extractor == "GreyNoise":
-                            extractor_obj.quick_check(ip_address)
-                except Exception as e:
-                    printc(f"\n{extractor} error: {str(e)}\n", mycolors.foreground.error(cv.bkg))
+        for name, extractor_obj in self.extractors.items():
+            try:
+                if name == "VirusTotal":
+                    data = extractor_obj._raw_ip_info(ip_address)
+                    self._get_info_virustotal(strip_json_escapes(data.json()))
+                elif name == "AlienVault":
+                    data = extractor_obj._raw_ip_info(ip_address)
+                    self._get_info_alienvault(strip_json_escapes(data.json()))
+                else:
+                    method = MultipleIPExtractor.METHODS.get(name)
+                    if method and hasattr(extractor_obj, method):
+                        getattr(extractor_obj, method)(ip_address)
+            except Exception as e:
+                printc(f"\n{name} error: {str(e)}\n", mycolors.foreground.error(cv.bkg))
 
     def _get_info_virustotal(self, data):
         try:
             attributes = data.get('data', {}).get('attributes', {})
-    
-            print()
-            print((mycolors.reset + "VIRUSTOTAL IP REPORT".center(100)), end='')
-            #print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
-    
+
             fields = {
                 'Reputation': attributes.get('reputation'),
                 'RIR': attributes.get('regional_internet_registry'),
@@ -54,36 +50,69 @@ class MultipleIPExtractor:
                 'Continent': attributes.get('continent')
             }
 
+            stats = attributes.get('last_analysis_stats', {})
+            votes = attributes.get('total_votes', {})
+
+            record = {'service': 'virustotal'}
+            for field, value in fields.items():
+                record[field.lower().replace(' ', '_')] = value
+            for stat, count in stats.items():
+                record['stat_' + stat] = count
+            for vote, count in votes.items():
+                record['votes_' + vote] = count
+            collector.add(record)
+
+            if not is_text_output():
+                return
+
+            print()
+            print(report_header("VIRUSTOTAL IP REPORT", IP_TABLE_WIDTH))
+
             COLSIZE = max(len(field) for field in fields.keys()) + 3
-    
+
             for field, value in fields.items():
                 print(mycolors.foreground.info(cv.bkg) + f"{field}:".ljust(COLSIZE) + "\t" + mycolors.reset + str(value))
-    
+
             print("\nAnalysis Stats:")
-            stats = attributes.get('last_analysis_stats', {})
             for stat, count in stats.items():
                 print(mycolors.foreground.error(cv.bkg) + f"{stat.title()}:".ljust(COLSIZE) + "\t" + mycolors.reset + str(count))
-            
+
             print("\nCommunity Votes:")
-            votes = attributes.get('total_votes', {})
             for vote, count in votes.items():
                 print(mycolors.foreground.error(cv.bkg) + f"{vote.title()}:".ljust(COLSIZE) + "\t" + mycolors.reset + str(count))
-            
-        except Exception as e:
-            print(mycolors.foreground.error(cv.bkg) + f"\nError: {str(e)}\n" + mycolors.reset)
 
-        print()
-        print("(For the full VirusTotal report use the -v and -V options)")
+        except Exception as e:
+            if is_text_output():
+                print(mycolors.foreground.error(cv.bkg) + f"\nError: {str(e)}\n" + mycolors.reset)
+
+        if is_text_output():
+            print()
+            print(bullet("For the full VirusTotal report use the -v and -V options.",
+                         IP_TABLE_WIDTH))
 
     def _get_info_alienvault(self, data):
         try:
+            collector.add({
+                'service': 'alienvault',
+                'asn': data.get('asn'),
+                'country': data.get('country_name'),
+                'region': data.get('region'),
+                'city': data.get('city'),
+                'continent': data.get('continent_code'),
+                'latitude': data.get('latitude'),
+                'longitude': data.get('longitude'),
+                'sections': ', '.join(data.get('sections', [])),
+                'pulses': data.get('pulse_info', {}).get('count'),
+            })
+
+            if not is_text_output():
+                return
+
             print()
-            print((mycolors.reset + "ALIENVAULT IP REPORT".center(100)), end='')
-            # print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
-        
+            print(report_header("ALIENVAULT IP REPORT", IP_TABLE_WIDTH))
+
             COLSIZE = 13
-        
+
             infocolor = mycolors.foreground.info(cv.bkg)
             print(infocolor + f"ASN:".ljust(COLSIZE) + "\t" + mycolors.reset + str(data.get('asn')))
             print(infocolor + f"Country:".ljust(COLSIZE) + "\t" + mycolors.reset + str(data.get('country_name')))
@@ -96,38 +125,10 @@ class MultipleIPExtractor:
             print(mycolors.foreground.error(cv.bkg) + f"Pulses Found:".ljust(COLSIZE) + "\t" + mycolors.reset + str(data.get('pulse_info', {}).get('count')))
                 
         except Exception as e:
-            printc(f"\nError: {str(e)}\n", mycolors.foreground.error(cv.bkg))
+            if is_text_output():
+                printc(f"\nError: {str(e)}\n", mycolors.foreground.error(cv.bkg))
 
-        print()
-        print("(For the full AlienVault report use the -n and -N options)")
-
-"""
-    def _get_info_inquest(self, data):
-        try:
-            print("\n")
-            print((mycolors.reset + "INQUEST IP REPORT".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
-
-            print(data)
-
-        except Exception as e:
-            if (cv.bkg == 1):
-                print(mycolors.foreground.lightred + f"\nError: {str(e)}\n" + mycolors.reset)
-            else:
-                print(mycolors.foreground.red + f"\nError: {str(e)}\n" + mycolors.reset)
-
-        print()
-        print("(For the full InQuest report use the -i and -I options)")
-
-    def _get_info_polyswarm(self, data):
-        print("\n")
-        print((mycolors.reset + "POLYSWARM IP REPORT".center(100)), end='')
-        print((mycolors.reset + "".center(28)), end='')
-        print("\n" + (100 * '-').center(50))
-
-        print(data)
-
-        print()
-        print("(For the full PolySwarm report use the -p and -P options)")
-"""
+        if is_text_output():
+            print()
+            print(bullet("For the full AlienVault report use the -n and -N options.",
+                         IP_TABLE_WIDTH))

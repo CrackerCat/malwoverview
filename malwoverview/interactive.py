@@ -1,33 +1,26 @@
 import cmd
-import sys
-import builtins
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_terminal_escapes
 import malwoverview.modules.configvars as cv
+from malwoverview.utils.capture import run_captured
 from malwoverview.utils.output import collector
 from malwoverview.utils.sanitize import (
     sanitize_hash, sanitize_ip, sanitize_domain, sanitize_url,
     sanitize_cve, sanitize_path, sanitize_tag, sanitize_general,
     sanitize_selector, sanitize_triage_id, sanitize_uuid,
-    sanitize_export_path, sanitize_integer,
+    sanitize_export_path, sanitize_integer, sanitize_hash_or_path,
 )
 
 
-class _InteractiveExit(Exception):
-    """Raised instead of SystemExit inside interactive mode."""
-    pass
-
-
 class InteractiveSession(cmd.Cmd):
-    intro = (
-        mycolors.foreground.cyan +
-        "\n  Malwoverview Interactive Mode\n" +
-        "  Type 'help' for available commands, 'quit' to exit.\n" +
-        mycolors.reset
-    )
-    prompt = mycolors.foreground.green + "malwoverview> " + mycolors.reset
-
     def __init__(self, args):
         super().__init__()
+        self.intro = (
+            mycolors.foreground.info(cv.bkg) +
+            "\n  Malwoverview Interactive Mode\n" +
+            "  Type 'help' for available commands, 'quit' to exit.\n" +
+            mycolors.reset
+        )
+        self.prompt = mycolors.foreground.accent(cv.bkg) + "malwoverview> " + mycolors.reset
         self.args = args
         self._modules = {}
         self._init_modules()
@@ -53,7 +46,6 @@ class InteractiveSession(cmd.Cmd):
         from malwoverview.modules.malpedia import MalpediaExtractor
         from malwoverview.modules.malshare import MalshareExtractor
         from malwoverview.modules.ipinfo import IPInfoExtractor
-        from malwoverview.modules.bgpview import BGPViewExtractor
         from malwoverview.modules.nist import NISTExtractor
         from malwoverview.modules.vulncheck import VulnCheckExtractor
         from malwoverview.modules.shodan_mod import ShodanExtractor
@@ -64,6 +56,9 @@ class InteractiveSession(cmd.Cmd):
         from malwoverview.modules.urlscanio import URLScanIOExtractor
         from malwoverview.modules.threatfox import ThreatFoxExtractor
         from malwoverview.modules.multiplehash import MultipleHashExtractor
+        from malwoverview.modules.multipleip import MultipleIPExtractor
+        from malwoverview.modules.android import AndroidExtractor
+        from malwoverview.modules.crtsh import CrtShExtractor
 
         self._modules = {
             'vt': VirusTotalExtractor(getoption('VIRUSTOTAL', 'VTAPI')),
@@ -75,7 +70,6 @@ class InteractiveSession(cmd.Cmd):
             'malpedia': MalpediaExtractor(getoption('MALPEDIA', 'MALPEDIAAPI')),
             'malshare': MalshareExtractor(getoption('MALSHARE', 'MALSHAREAPI')),
             'ipinfo': IPInfoExtractor(getoption('IPINFO', 'IPINFOAPI')),
-            'bgpview': BGPViewExtractor(),
             'nist': NISTExtractor(),
             'vulncheck': VulnCheckExtractor(getoption('VULNCHECK', 'VULNCHECKAPI')),
             'shodan': ShodanExtractor(getoption('SHODAN', 'SHODANAPI')),
@@ -85,6 +79,7 @@ class InteractiveSession(cmd.Cmd):
             'polyswarm': PolyswarmExtractor(getoption('POLYSWARM', 'POLYAPI')),
             'urlscanio': URLScanIOExtractor(getoption('URLSCANIO', 'URLSCANIOAPI')),
             'threatfox': ThreatFoxExtractor(getoption('THREATFOX', 'THREATFOXAPI')),
+            'crtsh': CrtShExtractor(),
         }
 
         self._modules['correlate'] = MultipleHashExtractor({
@@ -92,6 +87,23 @@ class InteractiveSession(cmd.Cmd):
             "HybridAnalysis": self._modules['ha'],
             "Triage": self._modules['triage'],
             "AlienVault": self._modules['alien'],
+        })
+
+        self._modules['android'] = AndroidExtractor(
+            self._modules['ha'], self._modules['vt'])
+
+        self._modules['multipleip'] = MultipleIPExtractor({
+            "VirusTotal": self._modules['vt'],
+            "AlienVault": self._modules['alien'],
+        })
+
+        self._modules['multipleipall'] = MultipleIPExtractor({
+            "IPInfo": self._modules['ipinfo'],
+            "VirusTotal": self._modules['vt'],
+            "AlienVault": self._modules['alien'],
+            "Shodan": self._modules['shodan'],
+            "AbuseIPDB": self._modules['abuseipdb'],
+            "GreyNoise": self._modules['greynoise'],
         })
 
         from malwoverview.utils.llm import LLMEnricher
@@ -110,58 +122,16 @@ class InteractiveSession(cmd.Cmd):
         self._enrich = False
 
     def _safe_run(self, func, *args, _prompt_type='threat', **kwargs):
-        _orig_exit = builtins.exit
-        _orig_sys_exit = sys.exit
-        _orig_quit = builtins.quit
+        ok, captured, error = run_captured(func, *args, _tee=True, **kwargs)
+        if not ok:
+            print(mycolors.foreground.red + f"\nError: {strip_terminal_escapes(str(error))}" + mycolors.reset)
+        printr()
 
-        def _fake_exit(code=0):
-            raise _InteractiveExit()
-
-        builtins.exit = _fake_exit
-        builtins.quit = _fake_exit
-        sys.exit = _fake_exit
-
-        capture_buf = None
-        orig_stdout = sys.stdout
         if self._enrich and self._llm.is_configured():
-            from io import StringIO
-            capture_buf = StringIO()
-
-            class _Tee:
-                def __init__(self, a, b):
-                    self.a, self.b = a, b
-                def write(self, data):
-                    self.a.write(data)
-                    self.b.write(data)
-                def flush(self):
-                    self.a.flush()
-                    self.b.flush()
-                @property
-                def encoding(self):
-                    return getattr(self.a, 'encoding', 'utf-8')
-
-            sys.stdout = _Tee(orig_stdout, capture_buf)
-
-        try:
-            result = func(*args, **kwargs)
-            printr()
-            return result
-        except (_InteractiveExit, SystemExit):
-            printr()
-        except Exception as e:
-            print(mycolors.foreground.red + f"\nError: {e}" + mycolors.reset)
-            printr()
-        finally:
-            if capture_buf:
-                sys.stdout = orig_stdout
-            builtins.exit = _orig_exit
-            builtins.quit = _orig_quit
-            sys.exit = _orig_sys_exit
-
-        if capture_buf:
-            captured = capture_buf.getvalue().strip()
-            if captured:
-                self._llm.print_enrichment(captured, _prompt_type)
+            from malwoverview.utils.llm import records_to_prompt_text
+            payload = records_to_prompt_text(collector.records) or captured.strip()
+            if payload:
+                self._llm.print_enrichment(payload, _prompt_type)
 
     def _check(self, sanitizer, value):
         """Run a sanitizer and print error on failure. Returns cleaned value or None."""
@@ -170,18 +140,45 @@ class InteractiveSession(cmd.Cmd):
             print(mycolors.foreground.red + f"Input error: {err}" + mycolors.reset)
         return clean
 
+    _VT_USAGE = ("Usage: vt hash|ip|domain|url|behavior <value> | "
+                 "vt file|report|threat|overall|upload|largefile <path> | "
+                 "vt batch|batchpublic <file> | "
+                 "vt retrohunt submit|list|status|matches [value] | "
+                 "vt livehunt create|list|notifications [value]")
+
     def do_vt(self, line):
-        """VirusTotal: vt hash <hash> | vt ip <ip> | vt domain <domain> | vt url <url>"""
+        """VirusTotal: vt hash|ip|domain|url|behavior <value> | vt file|report|threat|overall|upload|largefile <path> | vt batch|batchpublic <file> | vt retrohunt submit|list|status|matches [value] | vt livehunt create|list|notifications [value]"""
         parts = line.split(None, 1)
-        if len(parts) < 2:
-            print("Usage: vt hash|ip|domain|url <value>")
+        if not parts:
+            print(self._VT_USAGE)
             return
-        sub, arg = parts
+        sub = parts[0]
+        arg = parts[1] if len(parts) > 1 else ''
         vt = self._modules['vt']
+
+        if sub == 'retrohunt':
+            self._vt_retrohunt(vt, arg)
+            return
+        if sub == 'livehunt':
+            self._vt_livehunt(vt, arg)
+            return
+
+        if sub in ('list', 'notifications'):
+            print("Did you mean 'vt retrohunt list' or 'vt livehunt notifications'?")
+            return
+
+        if not arg:
+            print(self._VT_USAGE)
+            return
+
         if sub == 'hash':
             val = self._check(sanitize_hash, arg)
             if val:
                 self._safe_run(vt.vthashwork, val, 1)
+        elif sub == 'behavior':
+            val = self._check(sanitize_hash, arg)
+            if val:
+                self._safe_run(vt.vtbehavior, val)
         elif sub == 'ip':
             val = self._check(sanitize_ip, arg)
             if val:
@@ -194,44 +191,159 @@ class InteractiveSession(cmd.Cmd):
             val = self._check(sanitize_url, arg)
             if val:
                 self._safe_run(vt.vturlwork, val)
+        elif sub in ('file', 'report', 'threat', 'overall'):
+            val = self._check(sanitize_path, arg)
+            if val:
+                flags = {
+                    'file': (0, 0, 0),
+                    'report': (1, 0, 0),
+                    'threat': (1, 1, 0),
+                    'overall': (1, 0, 1),
+                }[sub]
+                self._safe_run(vt.filechecking_v3, val, *flags)
+        elif sub == 'upload':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(vt.vtuploadfile, val)
+        elif sub == 'largefile':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(vt.vtlargefile, val)
+        elif sub in ('batch', 'batchpublic'):
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(vt.vtbatchcheck, val, 1 if sub == 'batch' else 0)
         else:
-            print("Unknown subcommand. Use: hash, ip, domain, url")
+            print(self._VT_USAGE)
+
+    def _vt_retrohunt(self, vt, arg):
+        parts = arg.split(None, 1)
+        sub = parts[0] if parts else ''
+        value = parts[1] if len(parts) > 1 else ''
+        if sub == 'submit':
+            val = self._check(sanitize_path, value)
+            if val:
+                self._safe_run(vt.vtretrohuntsubmit, val)
+        elif sub == 'list':
+            self._safe_run(vt.vtretrohuntlist, value.strip() or None)
+        elif sub == 'status':
+            val = self._check(sanitize_general, value)
+            if val:
+                self._safe_run(vt.vtretrohuntstatus, val)
+        elif sub == 'matches':
+            val = self._check(sanitize_general, value)
+            if val:
+                self._safe_run(vt.vtretrohuntmatches, val)
+        else:
+            print("Usage: vt retrohunt submit <rules> | list [status] | status <id> | matches <id>")
+
+    def _vt_livehunt(self, vt, arg):
+        parts = arg.split(None, 1)
+        sub = parts[0] if parts else ''
+        value = parts[1] if len(parts) > 1 else ''
+        if sub == 'create':
+            val = self._check(sanitize_path, value)
+            if val:
+                self._safe_run(vt.vtlivehuntcreate, val)
+        elif sub == 'list':
+            self._safe_run(vt.vtlivehuntlist)
+        elif sub == 'notifications':
+            self._safe_run(vt.vtlivehuntnotifications)
+        else:
+            print("Usage: vt livehunt create <rules> | list | notifications")
+
+    _BAZAAR_USAGE = ("Usage: bazaar hash|download <hash> | tag <tag> | imphash <imphash> | "
+                     "latest <100|time> | yara <rule name> | batch <file> | dir <directory> | "
+                     "yaradownload | yaraextract")
 
     def do_bazaar(self, line):
-        """Malware Bazaar: bazaar hash <hash> | bazaar tag <tag> | bazaar latest <100|time>"""
+        """Malware Bazaar: bazaar hash|download <hash> | bazaar tag <tag> | bazaar imphash <imphash> | bazaar latest <100|time> | bazaar yara <rule name> | bazaar batch <file> | bazaar dir <directory> | bazaar yaradownload | bazaar yaraextract"""
         parts = line.split(None, 1)
-        if len(parts) < 2:
-            print("Usage: bazaar hash|tag|latest <value>")
+        if not parts:
+            print(self._BAZAAR_USAGE)
             return
-        sub, arg = parts
+        sub = parts[0]
+        arg = parts[1] if len(parts) > 1 else ''
         bz = self._modules['bazaar']
+
+        if sub == 'yaradownload':
+            self._safe_run(bz.bazaar_yaradownload)
+            return
+        if sub == 'yaraextract':
+            self._safe_run(bz.bazaar_yaraextract)
+            return
+
+        if not arg:
+            print(self._BAZAAR_USAGE)
+            return
+
         if sub == 'hash':
             val = self._check(sanitize_hash, arg)
             if val:
                 self._safe_run(bz.bazaar_hash, val)
+        elif sub == 'download':
+            val = self._check(sanitize_hash, arg)
+            if val:
+                self._safe_run(bz.bazaar_download, val)
         elif sub == 'tag':
             val = self._check(sanitize_tag, arg)
             if val:
                 self._safe_run(bz.bazaar_tag, val)
+        elif sub == 'imphash':
+            val = self._check(sanitize_hash, arg)
+            if val:
+                self._safe_run(bz.bazaar_imphash, val)
         elif sub == 'latest':
             val = self._check(sanitize_selector, arg)
             if val:
                 self._safe_run(bz.bazaar_lastsamples, val)
+        elif sub == 'yara':
+            val = self._check(sanitize_tag, arg)
+            if val:
+                self._safe_run(bz.bazaar_yara, val)
+        elif sub == 'batch':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(bz.bazaar_batchcheck, val)
+        elif sub == 'dir':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(bz.bazaar_dircheck, val)
         else:
-            print("Unknown subcommand. Use: hash, tag, latest")
+            print(self._BAZAAR_USAGE)
+
+    _URLHAUS_USAGE = ("Usage: urlhaus hash|sample <hash> | url <url> | tag <tag> | "
+                      "signature <signature> | batch <file> | payloads | getbatch")
 
     def do_urlhaus(self, line):
-        """URLHaus: urlhaus hash <hash> | urlhaus url <url> | urlhaus tag <tag>"""
+        """URLHaus: urlhaus hash <hash> | urlhaus sample <hash> | urlhaus url <url> | urlhaus tag <tag> | urlhaus signature <signature> | urlhaus batch <file> | urlhaus payloads | urlhaus getbatch"""
         parts = line.split(None, 1)
-        if len(parts) < 2:
-            print("Usage: urlhaus hash|url|tag <value>")
+        if not parts:
+            print(self._URLHAUS_USAGE)
             return
-        sub, arg = parts
+        sub = parts[0]
+        arg = parts[1] if len(parts) > 1 else ''
         uh = self._modules['urlhaus']
+
+        if sub == 'payloads':
+            self._safe_run(uh.hauspayloadslist)
+            return
+        if sub == 'getbatch':
+            self._safe_run(uh.hausgetbatch)
+            return
+
+        if not arg:
+            print(self._URLHAUS_USAGE)
+            return
+
         if sub == 'hash':
             val = self._check(sanitize_hash, arg)
             if val:
                 self._safe_run(uh.haushashsearch, val)
+        elif sub == 'sample':
+            val = self._check(sanitize_hash, arg)
+            if val:
+                self._safe_run(uh.haussample, val)
         elif sub == 'url':
             val = self._check(sanitize_url, arg)
             if val:
@@ -240,14 +352,25 @@ class InteractiveSession(cmd.Cmd):
             val = self._check(sanitize_tag, arg)
             if val:
                 self._safe_run(uh.haustagsearchroutine, val)
+        elif sub == 'signature':
+            val = self._check(sanitize_tag, arg)
+            if val:
+                self._safe_run(uh.haussigsearchroutine, val)
+        elif sub == 'batch':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(uh.hausbatchcheck, val)
         else:
-            print("Unknown subcommand. Use: hash, url, tag")
+            print(self._URLHAUS_USAGE)
+
+    _TRIAGE_USAGE = ("Usage: triage search <query> | summary|download|pcap|dynamic <id> | "
+                     "submit <file> | urlsubmit <url> | batch <file> | dir <directory>")
 
     def do_triage(self, line):
-        """Triage: triage search <query> | triage summary <id>"""
+        """Triage: triage search <query> | triage summary <id> | triage download <id> | triage pcap <id> | triage dynamic <id> | triage submit <file> | triage urlsubmit <url> | triage batch <file> | triage dir <directory>"""
         parts = line.split(None, 1)
         if len(parts) < 2:
-            print("Usage: triage search|summary <value>")
+            print(self._TRIAGE_USAGE)
             return
         sub, arg = parts
         tr = self._modules['triage']
@@ -255,18 +378,41 @@ class InteractiveSession(cmd.Cmd):
             val = self._check(sanitize_general, arg)
             if val:
                 self._safe_run(tr.triage_search, val)
-        elif sub == 'summary':
+        elif sub in ('summary', 'download', 'pcap', 'dynamic'):
             val = self._check(sanitize_triage_id, arg)
             if val:
-                self._safe_run(tr.triage_summary, val)
+                method = {
+                    'summary': tr.triage_summary,
+                    'download': tr.triage_download,
+                    'pcap': tr.triage_download_pcap,
+                    'dynamic': tr.triage_dynamic,
+                }[sub]
+                self._safe_run(method, val)
+        elif sub == 'submit':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(tr.triage_sample_submit, val)
+        elif sub == 'urlsubmit':
+            val = self._check(sanitize_url, arg)
+            if val:
+                self._safe_run(tr.triage_url_sample_submit, val)
+        elif sub == 'batch':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(tr.triage_batchcheck, val)
+        elif sub == 'dir':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(tr.triage_dircheck, val)
         else:
-            print("Unknown subcommand. Use: search, summary")
+            print(self._TRIAGE_USAGE)
 
     def do_ip(self, line):
-        """IP Lookup: ip <address> | ip shodan <address> | ip abuseipdb <address> | ip greynoise <address>"""
+        """IP Lookup: ip <address> | ip shodan|abuseipdb|greynoise|multi|all <address> | ip batch <file> | ip batchpublic <file>"""
         parts = line.split(None, 1)
         if not parts:
-            print("Usage: ip [shodan|abuseipdb|greynoise|bgpview] <address>")
+            print("Usage: ip [shodan|abuseipdb|greynoise|multi|all] <address> | "
+                  "ip batch|batchpublic <file>")
             return
         if len(parts) == 1:
             val = self._check(sanitize_ip, parts[0])
@@ -274,7 +420,12 @@ class InteractiveSession(cmd.Cmd):
                 self._safe_run(self._modules['ipinfo'].get_ip_details, val)
             return
         sub, arg = parts
-        if sub in ('shodan', 'abuseipdb', 'greynoise', 'bgpview'):
+        if sub in ('batch', 'batchpublic'):
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(self._modules['vt'].vtipbatchcheck, val,
+                               0 if sub == 'batch' else 1)
+        elif sub in ('shodan', 'abuseipdb', 'greynoise', 'multi', 'all'):
             val = self._check(sanitize_ip, arg)
             if not val:
                 return
@@ -284,8 +435,10 @@ class InteractiveSession(cmd.Cmd):
                 self._safe_run(self._modules['abuseipdb'].check_ip, val)
             elif sub == 'greynoise':
                 self._safe_run(self._modules['greynoise'].quick_check, val)
-            elif sub == 'bgpview':
-                self._safe_run(self._modules['bgpview'].get_ip_details, val)
+            elif sub == 'multi':
+                self._safe_run(self._modules['multipleip'].get_multiple_ip_details, val)
+            elif sub == 'all':
+                self._safe_run(self._modules['multipleipall'].get_multiple_ip_details, val)
         else:
             val = self._check(sanitize_ip, sub)
             if val:
@@ -346,32 +499,60 @@ class InteractiveSession(cmd.Cmd):
         else:
             print("Unknown subcommand. Use: cve, keyword")
 
+    _HYBRID_USAGE = ("Usage: hybrid hash <hash> [env 1-5] | quick|download <hash> | "
+                     "file <path> [env 1-5] | batch <file> | dir <directory>")
+
+    def _split_env(self, arg):
+        parts = arg.rsplit(None, 1)
+        if len(parts) == 2 and parts[1].isdigit() and 1 <= int(parts[1]) <= 5:
+            return parts[0], int(parts[1]) - 1
+        return arg, 0
+
     def do_hybrid(self, line):
-        """Hybrid Analysis: hybrid hash <hash> | hybrid quick <hash> | hybrid download <hash>"""
+        """Hybrid Analysis: hybrid hash <hash> [env 1-5] | hybrid quick <hash> | hybrid download <hash> | hybrid file <path> [env 1-5] | hybrid batch <file> | hybrid dir <directory>"""
         parts = line.split(None, 1)
         if len(parts) < 2:
-            print("Usage: hybrid hash|quick|download <value>")
+            print(self._HYBRID_USAGE)
             return
         sub, arg = parts
         ha = self._modules['ha']
-        if sub in ('hash', 'quick', 'download'):
+        if sub == 'hash':
+            value, env = self._split_env(arg)
+            val = self._check(sanitize_hash, value)
+            if val:
+                self._safe_run(ha.hashow, val, env)
+        elif sub in ('quick', 'download'):
             val = self._check(sanitize_hash, arg)
             if not val:
                 return
-            if sub == 'hash':
-                self._safe_run(ha.hashow, val)
-            elif sub == 'quick':
+            if sub == 'quick':
                 self._safe_run(ha.quickhashow, val)
-            elif sub == 'download':
+            else:
                 self._safe_run(ha.downhash, val)
+        elif sub == 'file':
+            value, env = self._split_env(arg)
+            val = self._check(sanitize_path, value)
+            if val:
+                self._safe_run(ha.hafilecheck, val, env)
+        elif sub == 'batch':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(ha.habatchcheck, val)
+        elif sub == 'dir':
+            val = self._check(sanitize_path, arg)
+            if val:
+                self._safe_run(ha.habatchdircheck, val)
         else:
-            print("Unknown subcommand. Use: hash, quick, download")
+            print(self._HYBRID_USAGE)
 
     def do_threatfox(self, line):
-        """ThreatFox: threatfox search <term> | threatfox tag <tag> | threatfox malware <name> | threatfox recent <days>"""
+        """ThreatFox: threatfox search <term> | threatfox tag <tag> | threatfox malware <name> | threatfox recent <days> | threatfox malwarelist"""
         parts = line.split(None, 1)
+        if parts and parts[0] == 'malwarelist':
+            self._safe_run(self._modules['threatfox'].threatfox_listmalware)
+            return
         if len(parts) < 2:
-            print("Usage: threatfox search|tag|malware|recent <value>")
+            print("Usage: threatfox search|tag|malware|recent <value> | threatfox malwarelist")
             return
         sub, arg = parts
         tf = self._modules['threatfox']
@@ -421,11 +602,15 @@ class InteractiveSession(cmd.Cmd):
         else:
             print("Unknown subcommand. Use: ip, domain, hash, url")
 
+    _MALPEDIA_USAGE = ("Usage: malpedia actors|families|payloads | meta [filter] | "
+                       "actor|family <name> | sample <hash> | yara <family> | "
+                       "ruleset <tlp_white|tlp_green|tlp_amber|auto>")
+
     def do_malpedia(self, line):
-        """Malpedia: malpedia actors | malpedia families | malpedia actor <name> | malpedia family <name> | malpedia sample <hash> | malpedia yara <family>"""
+        """Malpedia: malpedia actors | malpedia families | malpedia payloads | malpedia meta [filter] | malpedia actor <name> | malpedia family <name> | malpedia sample <hash> | malpedia yara <family> | malpedia ruleset <tlp level>"""
         parts = line.split(None, 1)
         if not parts:
-            print("Usage: malpedia actors|families|actor|family|sample|yara [value]")
+            print(self._MALPEDIA_USAGE)
             return
         sub = parts[0]
         arg = parts[1] if len(parts) > 1 else ''
@@ -434,6 +619,19 @@ class InteractiveSession(cmd.Cmd):
             self._safe_run(mp.malpedia_actors)
         elif sub == 'families':
             self._safe_run(mp.malpedia_families)
+        elif sub == 'payloads':
+            self._safe_run(mp.malpedia_payloads)
+        elif sub == 'meta':
+            if arg:
+                val = self._check(sanitize_general, arg)
+                if val:
+                    self._safe_run(mp.malpedia_families_meta, val)
+            else:
+                self._safe_run(mp.malpedia_families_meta)
+        elif sub == 'ruleset' and arg:
+            val = self._check(sanitize_tag, arg)
+            if val:
+                self._safe_run(mp.malpedia_get_yara_ruleset, val)
         elif sub == 'actor' and arg:
             val = self._check(sanitize_general, arg)
             if val:
@@ -451,13 +649,16 @@ class InteractiveSession(cmd.Cmd):
             if val:
                 self._safe_run(mp.malpedia_get_yara, val)
         else:
-            print("Usage: malpedia actors|families|actor|family|sample|yara [value]")
+            print(self._MALPEDIA_USAGE)
 
     def do_malshare(self, line):
-        """MalShare: malshare download <hash> | malshare list <type>"""
+        """MalShare: malshare download <hash> | malshare list <type> | malshare types | malshare type <file type>"""
         parts = line.split(None, 1)
+        if parts and parts[0] == 'types':
+            self._safe_run(self._modules['malshare'].malsharetypes)
+            return
         if len(parts) < 2:
-            print("Usage: malshare download|list <value>")
+            print("Usage: malshare download <hash> | list <type> | types | type <file type>")
             return
         sub, arg = parts
         ms = self._modules['malshare']
@@ -469,8 +670,12 @@ class InteractiveSession(cmd.Cmd):
             val = self._check(lambda v: sanitize_integer(v, 1), arg)
             if val:
                 self._safe_run(ms.malsharelastlist, int(val))
+        elif sub == 'type':
+            val = self._check(sanitize_tag, arg)
+            if val:
+                self._safe_run(ms.malsharetypelist, val)
         else:
-            print("Unknown subcommand. Use: download, list")
+            print("Unknown subcommand. Use: download, list, types, type")
 
     def do_polyswarm(self, line):
         """PolySwarm: polyswarm hash <hash> | polyswarm ip <ip> | polyswarm domain <domain> | polyswarm url <url> | polyswarm file <path>"""
@@ -599,14 +804,167 @@ class InteractiveSession(cmd.Cmd):
         else:
             print("Unknown subcommand. Use: submit, result, search, domain, ip")
 
+    def do_crtsh(self, line):
+        """Certificate Transparency (crt.sh): crtsh subdomains <domain> | crtsh certs <domain>"""
+        parts = line.split(None, 1)
+        if len(parts) < 2:
+            print("Usage: crtsh subdomains|certs <domain>")
+            return
+        sub, arg = parts
+        ct = self._modules['crtsh']
+        if sub == 'subdomains':
+            val = self._check(sanitize_domain, arg)
+            if val:
+                self._safe_run(ct.crtsh_subdomains, val)
+        elif sub == 'certs':
+            val = self._check(sanitize_domain, arg)
+            if val:
+                self._safe_run(ct.crtsh_certificates, val)
+        else:
+            print("Unknown subcommand. Use: subdomains, certs")
+
+    def do_android(self, line):
+        """Android device (needs adb in PATH): android ha | android vt | android vtpublic | android sendha <package> | android sendvt <package>"""
+        parts = line.split(None, 1)
+        if not parts:
+            print("Usage: android ha|vt|vtpublic | android sendha|sendvt <package>")
+            return
+        sub = parts[0]
+        arg = parts[1] if len(parts) > 1 else ''
+        ad = self._modules['android']
+        if sub in ('ha', 'vtpublic', 'vt'):
+            engine = {'ha': 1, 'vtpublic': 2, 'vt': 3}[sub]
+            self._safe_run(ad.checkandroid, engine)
+        elif sub in ('sendha', 'sendvt'):
+            if not arg:
+                print(f"Usage: android {sub} <package>")
+                return
+            val = self._check(sanitize_tag, arg)
+            if val:
+                if sub == 'sendha':
+                    self._safe_run(ad.sendandroidha, val)
+                else:
+                    self._safe_run(ad.sendandroidvt, val)
+        else:
+            print("Unknown subcommand. Use: ha, vt, vtpublic, sendha, sendvt")
+
+    def do_yara(self, line):
+        """YARA scan: yara <rules file or directory> <file or directory to scan>"""
+        parts = line.split(None, 1)
+        if len(parts) < 2:
+            print("Usage: yara <rules file or directory> <target file or directory>")
+            return
+        rules = self._check(sanitize_path, parts[0])
+        if not rules:
+            return
+        target = self._check(sanitize_path, parts[1])
+        if not target:
+            return
+
+        def _scan():
+            from malwoverview.modules.yara_scan import YaraScanner
+            YaraScanner(rules).scan_and_display(target)
+        self._safe_run(_scan)
+
+    def do_peinfo(self, line):
+        """Local PE triage (no API key): peinfo <file or directory> [entropy threshold]"""
+        parts = line.split()
+        if not parts:
+            print("Usage: peinfo <file or directory> [entropy threshold]")
+            return
+        target = self._check(sanitize_path, parts[0])
+        if not target:
+            return
+        threshold = 7.0
+        if len(parts) > 1:
+            try:
+                threshold = float(parts[1])
+            except ValueError:
+                print("The entropy threshold must be a number, for example 7.0")
+                return
+
+        def _scan():
+            from malwoverview.modules.pe_scan import PEScanner
+            PEScanner(threshold).scan_and_display(target)
+        self._safe_run(_scan)
+
+    def do_sigcheck(self, line):
+        """Check the Authenticode signature of a file or directory: sigcheck <file or directory> [any|first|all|best]"""
+        from malwoverview.utils.authenticode import VERIFY_MODES, DEFAULT_VERIFY_MODE
+
+        parts = line.strip().rsplit(None, 1)
+        arg = line.strip()
+        mode = DEFAULT_VERIFY_MODE
+        if len(parts) > 1 and parts[1].lower() in VERIFY_MODES:
+            arg, mode = parts[0], parts[1].lower()
+
+        if not arg:
+            print("Usage: sigcheck <file or directory> [%s]" % '|'.join(VERIFY_MODES))
+            return
+        target = self._check(sanitize_path, arg)
+        if not target:
+            return
+
+        def _scan():
+            from malwoverview.modules.pe_scan import PEScanner
+            PEScanner(verify_mode=mode).signature_and_display(target)
+        self._safe_run(_scan)
+
+    def do_iocs(self, line):
+        """Extract IOCs from a file (.txt, .pdf, .eml) or URL: iocs <file or URL>"""
+        arg = line.strip()
+        if not arg:
+            print("Usage: iocs <file or URL>")
+            return
+        if arg.startswith(('http://', 'https://')):
+            source = self._check(sanitize_url, arg)
+        else:
+            source = self._check(sanitize_path, arg)
+        if not source:
+            return
+
+        def _extract():
+            from malwoverview.utils.ioc_extract import IOCExtractor
+            IOCExtractor().extract_and_display(source)
+        self._safe_run(_extract)
+
+    def do_cache(self, line):
+        """Local result cache: cache stats | cache prune | cache clear"""
+        import sqlite3
+        from malwoverview.utils.cache import cache_stats, prune_cache, clear_cache
+        from malwoverview.utils.peinfo import humansize
+        sub = line.strip() or 'stats'
+        if sub not in ('stats', 'prune', 'clear'):
+            print("Usage: cache stats|prune|clear")
+            return
+        try:
+            if sub == 'stats':
+                info = cache_stats()
+                COLSIZE = 16
+                infocolor = mycolors.foreground.info(cv.bkg)
+                print()
+                print(infocolor + "Cache file:".ljust(COLSIZE) + mycolors.reset + str(info['db_path']))
+                print(infocolor + "Entries:".ljust(COLSIZE) + mycolors.reset + str(info['entries']))
+                print(infocolor + "Expired:".ljust(COLSIZE) + mycolors.reset + str(info['expired']))
+                print(infocolor + "TTL:".ljust(COLSIZE) + mycolors.reset + str(info['ttl']) + " seconds")
+                print(infocolor + "Size on disk:".ljust(COLSIZE) + mycolors.reset + humansize(info['size_bytes']))
+            elif sub == 'prune':
+                print(mycolors.foreground.success(cv.bkg) + "\nExpired cache entries removed: " + str(prune_cache()) + mycolors.reset)
+            else:
+                print(mycolors.foreground.success(cv.bkg) + "\nCache entries removed: " + str(clear_cache()) + mycolors.reset)
+        except sqlite3.Error as e:
+            print(mycolors.foreground.error(cv.bkg) + "\nCould not access the result cache: " + str(e) + mycolors.reset)
+        printr()
+
     def do_set(self, line):
-        """Change settings: set background 0|1 | set format text|json|csv | set verbose|quiet | set enrich on|off"""
+        """Change settings: set background 0|1 | set format text|json|csv | set verbose|quiet | set enrich on|off | set attack on|off"""
         parts = line.split()
         if not parts:
             print(f"  background: {cv.bkg}")
             print(f"  format:     {cv.output_format}")
             print(f"  verbosity:  {cv.verbosity}")
             print(f"  enrich:     {'on' if self._enrich else 'off'} ({self._llm.provider or 'not configured'})")
+            print(f"  attack-map: {'on' if cv.attack_map else 'off'}")
             return
         if parts[0] == 'background' and len(parts) > 1:
             if parts[1] in ('0', '1'):
@@ -622,6 +980,12 @@ class InteractiveSession(cmd.Cmd):
             cv.verbosity = 1
         elif parts[0] == 'quiet':
             cv.verbosity = -1
+        elif parts[0] == 'attack':
+            if len(parts) > 1 and parts[1] in ('on', 'off'):
+                cv.attack_map = (parts[1] == 'on')
+                print(f"  MITRE ATT&CK mapping {'enabled' if cv.attack_map else 'disabled'}.")
+            else:
+                print("Usage: set attack on|off")
         elif parts[0] == 'enrich':
             if len(parts) > 1 and parts[1] in ('on', 'off', 'claude', 'gemini', 'openai', 'ollama'):
                 if parts[1] == 'off':
@@ -659,7 +1023,7 @@ class InteractiveSession(cmd.Cmd):
             else:
                 print("Usage: set enrich on|off|claude|gemini|ollama")
         else:
-            print("Usage: set background|format|verbose|quiet|enrich [value]")
+            print("Usage: set background|format|verbose|quiet|enrich|attack [value]")
 
     def do_export(self, line):
         """Export last results: export json|csv [filename]"""
@@ -675,7 +1039,7 @@ class InteractiveSession(cmd.Cmd):
             val = self._check(sanitize_export_path, parts[1])
             if not val:
                 return
-            with open(val, 'w') as f:
+            with open(val, 'w', newline='') as f:
                 old_fmt = cv.output_format
                 cv.output_format = fmt
                 collector.finalize(f)
@@ -689,7 +1053,7 @@ class InteractiveSession(cmd.Cmd):
 
     def do_quit(self, line):
         """Exit interactive mode"""
-        print(mycolors.foreground.cyan + "\nGoodbye!" + mycolors.reset)
+        print(mycolors.foreground.info(cv.bkg) + "\nGoodbye!" + mycolors.reset)
         return True
 
     def do_exit(self, line):

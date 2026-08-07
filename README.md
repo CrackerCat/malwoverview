@@ -1,6 +1,6 @@
 # Malwoverview
 
-[<img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/alexandreborges/malwoverview?color=red&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/releases/tag/v8.0.5) [<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/alexandreborges/malwoverview?color=Yellow&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/releases) [<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/alexandreborges/malwoverview?label=Release%20Date&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/releases) [<img alt="GitHub" src="https://img.shields.io/github/license/alexandreborges/malwoverview?style=for-the-badge">](https://github.com/alexandreborges/malwoverview/blob/master/LICENSE) 
+[<img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/alexandreborges/malwoverview?color=red&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/releases/tag/v8.1.0) [<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/alexandreborges/malwoverview?color=Yellow&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/releases) [<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/alexandreborges/malwoverview?label=Release%20Date&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/releases) [<img alt="GitHub" src="https://img.shields.io/github/license/alexandreborges/malwoverview?style=for-the-badge">](https://github.com/alexandreborges/malwoverview/blob/master/LICENSE) 
 [<img alt="GitHub stars" src="https://img.shields.io/github/stars/alexandreborges/malwoverview?logoColor=Red&style=for-the-badge">](https://github.com/alexandreborges/malwoverview/stargazers)
 [<img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/ale_sp_brazil?style=for-the-badge&logo=X&color=blueviolet">](https://twitter.com/ale_sp_brazil)
 [![Downloads](https://static.pepy.tech/personalized-badge/malwoverview?period=month&units=international_system&left_color=grey&right_color=orange&left_text=Last%2030%20days)](https://pepy.tech/project/malwoverview)
@@ -46,7 +46,7 @@
       See GNU Public License on <http://www.gnu.org/licenses/>.
 
 
-## Current Version: 8.0.5 (Codename: Revolutions)
+## Current Version: 8.1.0 (Codename: Revolutions)
 
      Important note:  Malwoverview does NOT submit samples to any endpoint by default, 
      so it respects possible Non-Disclosure Agreements (NDAs). There're specific options
@@ -95,31 +95,44 @@ This tool aims to :
 28. Submit large files (>= 32 MB) to Virus Total. 
 29. Malwoverview uses Virus Total API v.3, so there isn't longer any option using v.2. 
 30. Retrieve information about a given IP address from IPInfo service.
-31. Retrieve information about a given IP address from BGPView service.
-32. Retrieve combined information about a given IP address from multiple services.
-33. Offer extra option to save any downloaded file to a central location.
-34. List and search vulnerabilities from NIST through different criterias.
-35. Query VulnCheck database - Community/Free tier.
-36. Gather threat hunting information from Shodan using different criteria.
-37. Check IP reputation from AbuseIPDB.
-38. Check IP classification from GreyNoise (community API).
-39. Perform domain and IP Whois/RDAP lookups.
-40. Cross-service hash correlation across VirusTotal, Hybrid Analysis, Triage, and AlienVault.
-41. Batch hash check against Malware Bazaar from a file containing hashes.
-42. Batch hash check against Hybrid Analysis from a file containing hashes.
-43. Batch hash check against Triage from a file containing hashes.
-44. Directory scan against Malware Bazaar, Hybrid Analysis, and Triage.
-45. Extract IOCs (hashes, IPs, URLs, domains, CVEs) from text files.
-46. Scan files or directories with YARA rules.
-47. Interactive REPL mode for continuous threat hunting sessions.
-48. JSON and CSV structured output formats.
-49. Result caching with configurable TTL (SQLite-based).
-50. HTTP/HTTPS/SOCKS5 proxy support for all API requests.
-51. MITRE ATT&CK technique mapping for behavior reports.
-52. TUI (Text User Interface) dashboard mode with panel-based navigation.
-53. Gather threat hunting information from URLScan.io — submit URLs, retrieve scan results, and search scans.
-54. LLM-powered threat enrichment — AI-generated risk assessment, MITRE ATT&CK mapping, and analyst recommendations appended to any query result. Supports Claude, Gemini, OpenAI, and Ollama (local).
-55. Batch IP check against VirusTotal from a file containing IP addresses, showing a summary table (IP Address, Country, AS Owner, Detection).
+31. Retrieve combined information about a given IP address from multiple services.
+32. Offer extra option to save any downloaded file to a central location.
+33. List and search vulnerabilities from NIST through different criterias.
+34. Query VulnCheck database - Community/Free tier.
+35. Gather threat hunting information from Shodan using different criteria.
+36. Check IP reputation from AbuseIPDB.
+37. Check IP classification from GreyNoise (community API).
+38. Perform domain and IP Whois/RDAP lookups.
+39. Cross-service hash correlation across VirusTotal, Hybrid Analysis, Triage, and AlienVault.
+40. Batch hash check against Malware Bazaar from a file containing hashes.
+41. Batch hash check against Hybrid Analysis from a file containing hashes.
+42. Batch hash check against Triage from a file containing hashes.
+43. Directory scan against Malware Bazaar, Hybrid Analysis, and Triage.
+44. Extract IOCs (hashes, IPs, URLs, domains, CVEs) from text files.
+45. Scan files or directories with YARA rules.
+46. Interactive REPL mode for continuous threat hunting sessions.
+47. JSON and CSV structured output formats.
+48. Result caching with configurable TTL (SQLite-based).
+49. HTTP/HTTPS/SOCKS5 proxy support for all API requests.
+50. MITRE ATT&CK technique mapping for behavior reports.
+51. TUI (Text User Interface) dashboard mode with panel-based navigation.
+52. Gather threat hunting information from URLScan.io — submit URLs, retrieve scan results, and search scans.
+53. LLM-powered threat enrichment — AI-generated risk assessment, MITRE ATT&CK mapping, and analyst recommendations appended to any query result. Supports Claude, Gemini, OpenAI, and Ollama (local).
+54. Batch IP check against VirusTotal from a file containing IP addresses, showing a summary table (IP Address, Country, AS Owner, Detection).
+55. Hunt on VirusTotal with YARA rules: submit and follow Retrohunt jobs, list the matched files, and create and list Livehunt rulesets and notifications.
+56. Scan with a whole directory of YARA rules, each file compiled in its own namespace.
+57. Search Malware Bazaar samples by YARA rule name, and download and extract the YARAify rule set from abuse.ch.
+58. Download the complete Malpedia YARA ruleset for a given TLP level.
+59. List the MalShare file types seen in the last 24 hours, and list the hashes of any of those types.
+60. Batch hash check against URLHaus from a file containing hashes.
+61. Certificate Transparency pivots through crt.sh, with no API key: enumerate the subdomains seen in issued certificates and list the certificates themselves.
+62. Inspect, prune and empty the local result cache.
+63. Interactive mode and TUI reach every service the command line reaches, and the TUI exports its results to json and csv.
+64. Local PE triage of a file or directory with no API key, listing file type, size, overlay, overlay size and entropy, and highlighting the files above an entropy threshold.
+65. Android scans hash every APK of a package, including the split APKs, instead of the base APK alone.
+66. Authenticode signature checking with no API key, reporting whether a binary is signed and whether the signature is still valid, and naming the signer of a tampered file.
+67. Every embedded signature of a multi-signed binary is reported, each with its own digest algorithm, certificate, thumbprint and serial number, so a second signer is never hidden behind the first.
+68. The VirusTotal file check (-v 1) and hash report (-v 8) show the signature block: whether the certificate verified, the signer and counter signer chains, the signing date and every certificate with its status, algorithm, validity dates, serial number and thumbprint.
 
 ## CONTRIBUTORS
 
@@ -177,6 +190,7 @@ AFTER having installed Malwoverview:
 Some features require optional dependencies. Install them as needed:
 
       * YARA scanning:       pip install malwoverview[yara]
+      * Signature checking:  pip install malwoverview[signature]
       * PDF report export:   pip install malwoverview[pdf]
       * TUI dashboard:       pip install malwoverview[tui]
       * All optional:        pip install malwoverview[all]
@@ -197,6 +211,14 @@ create it!
 
 * A special note about the Alien Vault: it is necessary to subscribe to pulses on Alien Vault 
 website before using -n 1 option.
+
+* A special note about Malshare and Shodan: both services require their API key to be sent in the
+URL itself, and neither documents a header or a request body alternative (the Malshare hashlookup
+endpoint is a POST, but the key still travels in the query string). Malwoverview replaces these two
+keys with [REDACTED] in every error message it prints, so they do not end up in the output you paste
+into a bug report, but the key is still recorded in the access logs of those services and in any
+proxy that terminates TLS between you and them. Treat both keys as exposed to the service operator
+and rotate them as you would any other credential.
 
 The .malwapi.conf configuration file has the following format:
 
@@ -277,11 +299,10 @@ The APIs can be requested on the respective service websites:
 10. Triage: https://tria.ge/signup.
 11. IPInfo: https://ipinfo.io/
 12. VulnCheck: https://vulncheck.com/signin (Community/Free tier available)
-13. BGPView: https://bgpview.docs.apiary.io/
-14. Shodan: https://account.shodan.io/register
-15. AbuseIPDB: https://www.abuseipdb.com/register
-16. GreyNoise: https://viz.greynoise.io/signup
-17. URLScan.io: https://urlscan.io/user/signup
+13. Shodan: https://account.shodan.io/register
+14. AbuseIPDB: https://www.abuseipdb.com/register
+15. GreyNoise: https://viz.greynoise.io/signup
+16. URLScan.io: https://urlscan.io/user/signup
 
 #### LLM Enrichment Providers (optional)
 
@@ -534,15 +555,19 @@ Python 2.7)
 
 ## HELP
 
-usage: python malwoverview.py -c <API configuration file> -d <directory> -o <0|1> -v <1-13>
--V <argument> -a <1-17> -A <filename> -l <1-7> -L <hash> -j <1-7>
--J <argument> -p <1-8> -P <argument> -y <1-5> -Y <file name> -n <1-5>
--N <argument> -m <1-8> -M <argument> -b <1-12> -B <argument> -x <1-9> -X <argument>
--ip <1-8> -IP <argument> -O <directory> --nist <1-5> --NIST <argument> -vc <1-8>
--VC <argument> -s <1-2> -S <argument> -ab <1> -AB <argument> -gn <1> -GN <argument>
--wh <1-2> -WH <argument> -u <1-5> -U <arg> --correlate-hash <hash> --extract-iocs <file|url> --yara <rules>
---yara-target <target> --output-format text|json|csv --proxy <url> --quiet --verbose
---no-cache --cache-ttl <seconds> --report html|pdf --interactive --attack-map
+usage: python malwoverview.py -c <API configuration file> -d <directory> -o <0|1> -v <1-20>
+-V <virustotal arg> -a <1-13> -A <filename> -l <1-8> -L <hash|file type> -j <1-8>
+-J <URLhaus argument> -p <1-8> -P <polyswarm argument> -y <1-5> -Y <file name> -n <1-5>
+-N <argument> -m <1-9> -M <argument> -b <1-15> -B <arg> -x <1-9> -X <arg>
+-ip <1-8> -IP <IP address> -O <output directory> --nist <1-5> --NIST <argument> -vc <1-8>
+-VC <argument> -s <1-2> -S <arg> -ab <1> -AB <arg> -gn <1> -GN <arg>
+-wh <1-2> -WH <arg> -ct <1-2> -CT <domain> -u <1-5> -U <arg> --correlate-hash <hash>
+--extract-iocs <file|url> --yara <rules> --yara-target <target>
+--peinfo <file|directory> --entropy-threshold <value>
+--sigcheck <file|directory> --no-signature --sig-verify-mode <any|first|all|best>
+--output-format text|json|csv --proxy <url> --quiet --verbose --no-cache
+--cache-ttl <seconds> --cache-stats --prune-cache --clear-cache --no-resolve --defang
+--no-ioc-filter --report html|pdf --interactive --tui --attack-map
 
 Malwoverview is a first response tool for threat hunting written by Alexandre Borges. 
 
@@ -588,6 +613,19 @@ MALWARE OPTIONS:
 		+ -v 12: it shows behaviour information of a sample given a hash through option -V. 
 				This option uses VT API v.3; -v 13: it submits LARGE files (above 32 MB)
 				to VT using API v.3;
+		+ -v 14: submits a Retrohunt job using the YARA rules file or rules directory 
+				given with -V (VT scans the samples it received over the past months 
+				against the rules);
+		+ -v 15: lists your Retrohunt jobs, optionally filtered by a status passed 
+				through -V (starting, running, aborting, aborted or finished);
+		+ -v 16: shows the status and progress of the Retrohunt job whose id is 
+				given with -V;
+		+ -v 17: lists the files matched by the Retrohunt job whose id is given with -V;
+		+ -v 18: creates a Livehunt ruleset from the YARA rules file or rules directory 
+				given with -V (VT then matches every new submission against it);
+		+ -v 19: lists your Livehunt rulesets;
+		+ -v 20: lists your Livehunt notifications. Options 14 to 20 need a VT key with 
+				premium (enterprise) privileges;
 
 	-V VIRUSTOTAL_ARG, --virustotal_arg VIRUSTOTAL_ARG
 	
@@ -597,7 +635,9 @@ MALWARE OPTIONS:
 		-V must be a hash (MD5/SHA1/SHA256); If "-v 9" or "-v 13" then -V must
 		be a file path to submit; If "-v 10" or "-v 11" then -V must be a file
 		containing hashes (one per line); If "-v 12" then -V must be a hash for
-		behavior analysis.
+		behavior analysis; If "-v 14" or "-v 18" then -V must be a YARA rules
+		file or a directory of rules; If "-v 15" then -V may be a job status;
+		If "-v 16" or "-v 17" then -V must be a Retrohunt job id.
 
 	-a HYBRID_ANALYSIS, --hybrid_option HYBRID_ANALYSIS
 	
@@ -615,23 +655,20 @@ MALWARE OPTIONS:
 			+ 8. submits a sample to Windows 7 64-bit environment;
 			+ 9. submits a sample to an Android environment; 
 			+ 10. submits a sample to a Linux 64-bit environment;
-			+ 11. downloads a sample from a Windows 7 32-bit environment; 
-			+ 12. downloads a sample from a Windows 7 32-bit HWP environment; 
-			+ 13. downloads a sample from a Windows 7 64-bit environment; 
-			+ 14. downloads a sample from an Android environment; 
-			+ 15. downloads a sample from a Linux 64-bit environment.
-			+ 16: batch hash check from a file (one hash per line) against
-			Hybrid Analysis;
-			+ 17: directory scan — computes SHA256 for each file in a directory
-			and checks against Hybrid Analysis.
+			+ 11. downloads the sample for a given hash (the stored sample is the 
+			same regardless of the sandbox environment, so a single option 
+			replaces the former options 11 to 15); 
+			+ 12. batch hash check from a file (one hash per line); 
+			+ 13. directory scan - computes SHA256 for each file and checks 
+			against Hybrid Analysis.
 
 	-A SUBMIT_HA, --ha_arg SUBMIT_HA
 	
 		+ Provides argument for -a option from HYBRID ANALYSIS. If "-a 1" to
 		"-a 5" then -A must be a hash or a file path (auto-detected); If "-a 6"
-		to "-a 10" then -A must be a file path to submit; If "-a 11" to "-a 15"
-		then -A must be a hash to download; If "-a 16" then -A must be a file
-		containing hashes (one per line); If "-a 17" then -A must be a directory
+		to "-a 10" then -A must be a file path to submit; If "-a 11" then -A
+		must be a hash to download; If "-a 12" then -A must be a file
+		containing hashes (one per line); If "-a 13" then -A must be a directory
 		path to scan.
 
 	-D VT_PUBLIC_PREMIUM, --vtpubpremium VT_PUBLIC_PREMIUM
@@ -651,12 +688,17 @@ MALWARE OPTIONS:
 			+ 3: ELF ; 
 			+ 4: Java; 
 			+ 5: PDF ; 
-			+ 6: Composite(OLE); 
-			+ 7: List of hashes from past 24 hours.
+			+ 6: List the file types available in the last 24 hours (and how many 
+			samples of each); 
+			+ 7: List of hashes from past 24 hours; 
+			+ 8: List hashes of the file type given with -L (use -l 6 to discover 
+			the valid file types).
 
 	-L MALSHARE_HASH_SEARCH, --malshare_hash MALSHARE_HASH_SEARCH
 	
-		+ Provides a hash as argument for downloading a sample from MALSHARE repository.
+		+ Provides a hash as argument for downloading a sample from MALSHARE 
+		repository (-l 1) or, when used with -l 8, the file type whose hashes 
+		must be listed.
 		
 	-j HAUS_OPTION, --haus_option HAUS_OPTION
 	
@@ -668,7 +710,8 @@ MALWARE OPTIONS:
 			+ 4: searches a malicious URL by a given tag (case sensitive); 
 			+ 5: searches for payloads given a tag; 
 			+ 6: retrives a list of downloadable links to recent payloads; 
-			+ 7: retrives a list of recent malicious URLs.
+			+ 7: retrives a list of recent malicious URLs; 
+			+ 8: batch hash check from a file (one hash per line).
 
 	-J HAUS_ARG, --haus_arg HAUS_ARG
 	
@@ -751,7 +794,11 @@ MALWARE OPTIONS:
 			+ 7: Get a malware sample from malpedia (zip format -- password: infected). 
 			It is necessary to specify the requested hash by using -M option;
 			+ 8: Get a zip file containing Yara rules for a specific family 
-			(get the possible families using -m 5), which must be specified by using -M option.
+			(get the possible families using -m 5), which must be specified by using -M option; 
+			+ 9: Get a zip file containing the complete Malpedia Yara ruleset for a 
+			TLP level, which must be given with -M as one of tlp_white, tlp_green, 
+			tlp_amber or auto (the short forms white, green and amber are also 
+			accepted). Combine it with --yara to scan with the downloaded rules.
 
 	-M MALPEDIAARG, --malpediarg MALPEDIAARG
 	
@@ -783,7 +830,15 @@ MALWARE OPTIONS:
 			+ 11: (Bazaar) Batch hash check from a file (one hash per line)
 			against Malware Bazaar;
 			+ 12: (Bazaar) Directory scan — computes SHA256 for each file in a
-			directory and checks against Malware Bazaar.
+			directory and checks against Malware Bazaar;
+			+ 13: (Bazaar) Search samples matching the YARA rule name given by 
+			option -B. Rule names are listed at the end of a hash report 
+			(-b 1), and are also the rule names inside the YARAify set 
+			downloaded with -b 14 and extracted with -b 15;
+			+ 14: (YARAify) Download the YARAify rule set (abuse.ch), which is the 
+			rule set behind Malware Bazaar;
+			+ 15: (YARAify) Extract the downloaded YARAify rule set into a rules 
+			directory that can be given to --yara.
 
 	-B BAZAAR_ARG, --bazaararg BAZAAR_ARG
 	
@@ -852,7 +907,7 @@ MALWARE OPTIONS:
 
       + Get IP information from various sources. The possible values are:
             + 1: Get details for an IP address provided with -IP from IPInfo;
-            + 2: Get details for an IP address provided with -IP from BGPView;
+            + 2: Removed in 8.1.0 (BGPView shut down);
             + 3: Get details for an IP address provided with -IP from all
             available intel services (VirusTotal/Alienvault);
             + 4: Get details for an IP address from Shodan;
@@ -911,6 +966,22 @@ MALWARE OPTIONS:
 		+ Provides argument for -wh option from WHOIS. If "-wh 1" then -WH must
 		be a domain name; If "-wh 2" then -WH must be an IP address.
 
+	-ct CRTSH, --crtsh CRTSH
+
+		+ Queries the Certificate Transparency logs through crt.sh, which needs
+		no API key. Possible values:
+			+ 1: lists the distinct DNS names seen in the certificates issued for
+			the domain given with -CT, which is a cheap way of enumerating
+			subdomains. Names belonging to other domains, which appear because a
+			certificate can cover several tenants, are counted and reported
+			separately;
+			+ 2: lists the certificates themselves (identifier, issuer, common
+			name and validity dates, newest first).
+
+	-CT CRTSH_ARG, --crtsharg CRTSH_ARG
+
+		+ Provides the domain name queried by the -ct option.
+
 	-u URLSCANIO, --urlscanio URLSCANIO
 
 		+ URLSCAN.IO options:
@@ -949,6 +1020,68 @@ MALWARE OPTIONS:
 
 		+ File or directory to scan with YARA rules.
 
+	--peinfo TARGET
+
+		+ Local PE triage of a file or directory (no API key): file type, size,
+		overlay, overlay size and entropy. Directories are scanned recursively.
+		Entropy is the highest PE section entropy, or the whole-file Shannon
+		entropy for non-PE files.
+
+	--entropy-threshold VALUE
+
+		+ Entropy value at which --peinfo highlights a file as packed or
+		encrypted. Default: 7.0
+
+	--sigcheck TARGET
+
+		+ Check the Authenticode signature of a file or directory (no API key):
+		status, signer, issuer, certificate dates, digest algorithm, certificate
+		thumbprint and serial number. The status is one of VALID, TAMPERED,
+		UNTRUSTED, EXPIRED, MALFORMED, INVALID, NONE (no embedded signature),
+		PRESENT (a signature is there but was not verified) or N/A (not a PE
+		file). Only embedded signatures are read: a file reported as NONE can
+		still be signed through a Windows catalog.
+		Full verification requires: pip install malwoverview[signature]
+
+		VALID means the file still matches the certificate it was signed with.
+		It is not a verdict on the file: signing certificates are stolen,
+		abused and issued by mistake, and malware has carried valid Microsoft
+		signatures. An embedded signature is stored in the overlay, so a signed
+		file always reports one and that overlay is not an appended payload.
+
+		Certificate revocation is not checked. No network request is made, so a
+		file signed with a certificate that was revoked afterwards still
+		reports VALID.
+
+		A signature stays VALID after its certificate expires when it carries a
+		countersignature, because the countersignature proves the file was
+		signed while the certificate was still valid. This is how Authenticode
+		is meant to work, and the report says so when it happens: an expiry
+		date in the past next to VALID is not a contradiction.
+
+		A file can carry more than one embedded signature, usually SHA-1 for
+		compatibility plus SHA-256, and the signers frequently differ. The
+		Signer column shows one of them and marks the rest as (+N); running
+		--sigcheck on a single file lists every signature with its own digest
+		algorithm, certificate, thumbprint and serial number.
+
+	--no-signature
+
+		+ Skip signature verification in --peinfo and --sigcheck, reporting
+		only whether a signature is present. Useful on large directories.
+
+	--sig-verify-mode MODE
+
+		+ Which embedded signature decides the status of a multi-signed file:
+		any, first, all or best. Default: best
+
+		best follows the signature made with the strongest digest algorithm,
+		which is the one Windows honours. first follows file order, matching
+		sigcheck.exe. all requires every signature to verify, and any accepts
+		the file when a single one does. The choice matters: across 517
+		multi-signed drivers, 37 change status depending on this setting, and
+		any reports VALID on 21 files that first rejects.
+
 	--attack-map
 
 		+ Enable MITRE ATT&CK technique mapping for behavior reports.
@@ -979,6 +1112,45 @@ GENERAL OPTIONS:
 	--cache-ttl SECONDS
 
 		+ Cache time-to-live in seconds (default: 3600).
+
+	--cache-stats
+
+		+ Show the local result cache location, how many entries it holds, how many
+		of them are expired under the current --cache-ttl, and its size on disk.
+		Then exit.
+
+	--prune-cache
+
+		+ Delete only the expired entries from the local result cache (according to
+		--cache-ttl) and exit.
+
+	--clear-cache
+
+		+ Delete every entry from the local result cache and exit.
+
+	--no-resolve
+
+		+ Do not resolve or geolocate the host names found in the results. Listing a
+		feed (for example the URLHaus payloads and tag listings) normally makes your
+		host look up every URL it shows, which tells the operator of that
+		infrastructure that it is being investigated. With this option the location
+		column shows "Not Resolved" instead.
+
+	--defang
+
+		+ Print the IOCs listed by --extract-iocs in defanged form
+		(hxxp://example[.]com), so they can be copied into a report or a ticket
+		without becoming clickable. It applies to that listing only, and changes
+		only the output: the queries are still made with the real values.
+
+	--no-ioc-filter
+
+		+ Turn off the noise filtering that --extract-iocs applies by default.
+		Normally an HTML page has its <script>, <style> and <svg> blocks skipped,
+		a domain is only reported when its last label is a real top-level domain,
+		and links back to the source site or to known page furniture (analytics,
+		fonts, social buttons) are dropped. With this option every regex match in
+		the raw source is reported instead.
 
 	--report html|pdf
 
@@ -1035,16 +1207,21 @@ VULNERABILITY OPTIONS:
       VulnCheck Database Query:
       Query options for VulnCheck vulnerability database (Community/Free tier)
 
-      --vulncheck VULNCHECK_OPTION   Query type: 1=List available indexes, 
-                                     2=Get KEV (Known Exploited Vulnerabilities), 
-                                     3=Search CVE in KEV, 
-                                     4=Get KEV backup link,
-                                     5=List MITRE CVEs,
-                                     6=List NIST NVD2 CVEs,
-                                     7=Search CVE in MITRE,
-                                     8=Search CVE in NIST NVD2
-      --VULNCHECK VULNCHECK_ARG      Search value (CVE ID for options 3/7/8, 
-                                     max results for options 2/5/6, e.g., 50)
+	-vc VULNCHECK_OPTION, --vulncheck VULNCHECK_OPTION
+
+		+ Query type: 1: List available indexes; 
+		2: Get KEV (Known Exploited Vulnerabilities); 
+		3: Search CVE in KEV; 
+		4: Get KEV backup link; 
+		5: List MITRE CVEs; 
+		6: List NIST NVD2 CVEs; 
+		7: Search CVE in MITRE; 
+		8: Search CVE in NIST NVD2.
+
+	-VC VULNCHECK_ARG, --VULNCHECK VULNCHECK_ARG
+
+		+ Search value (CVE ID for options 3/7/8, max results for options
+		2/5/6, e.g., 50).
 
 ## SUBCOMMANDS
 
@@ -1058,11 +1235,10 @@ Available subcommands:
       ha          Hybrid Analysis operations (report, submit, download, batch, dir)
       bazaar      Malware Bazaar operations (hash, tag, download, batch, dir)
       triage      Triage operations (search, summary, submit, dynamic, batch, dir)
-      urlhaus     URLHaus operations (hash, url, tag, download)
-      ip          IP address lookups (info, bgp, shodan, abuse, greynoise, all)
+      urlhaus     URLHaus operations (hash, url, tag, download, batch)
+      ip          IP address lookups (info, shodan, abuse, greynoise, all, batch)
       whois       Whois/RDAP lookups (domain, ip)
       shodan      Shodan operations (ip, search)
-      urlscanio   URLScan.io operations (submit, result, search, domain, ip)
       correlate   Cross-service correlation (hash)
       extract     IOC extraction from files or URLs
       yara        YARA rule scanning
@@ -1075,7 +1251,7 @@ Subcommand examples (equivalent to flag-based syntax):
       malwoverview vt hash <sha256>                     # same as: malwoverview -v 8 -V <sha256>
       malwoverview vt behavior <sha256>                 # same as: malwoverview -v 12 -V <sha256>
       malwoverview ha report <hash> --env 3             # same as: malwoverview -a 3 -A <hash>
-      malwoverview ha batch <hashfile>                  # same as: malwoverview -a 16 -A <hashfile>
+      malwoverview ha batch <hashfile>                  # same as: malwoverview -a 12 -A <hashfile>
       malwoverview bazaar hash <sha256>                 # same as: malwoverview -b 1 -B <sha256>
       malwoverview bazaar batch <hashfile>              # same as: malwoverview -b 11 -B <hashfile>
       malwoverview bazaar dir <directory>               # same as: malwoverview -b 12 -B <directory>
@@ -1115,6 +1291,14 @@ Use --help with any subcommand for details:
       malwoverview -v 11 -V /home/remnux/malware/hash_list_3.txt
       malwoverview -v 12 -V 9d26e19b8fc5819b634397d48183637bacc9e1c62d8b1856b8116141cb8b4000
       malwoverview -v 13 -V /largefiles/4b3b46558cffe1c0b651f09c719af2779af3e4e0e43da060468467d8df445e93
+      malwoverview -v 14 -V /home/remnux/rules/apt_rules.yar
+      malwoverview -v 14 -V /home/remnux/rules/
+      malwoverview -v 15
+      malwoverview -v 16 -V 1712345678-abcdef0123456789
+      malwoverview -v 17 -V 1712345678-abcdef0123456789
+      malwoverview -v 18 -V /home/remnux/rules/livehunt.yar
+      malwoverview -v 19
+      malwoverview -v 20
       malwoverview -a 1 -A 2e1fcadbac81296946930fe3ba580fd0b1aca11bc8ffd7cefa19dea131274ae8
       malwoverview -a 1 -A 2e1fcadbac81296946930fe3ba580fd0b1aca11bc8ffd7cefa19dea131274ae8.exe
       malwoverview -a 2 -A 2e1fcadbac81296946930fe3ba580fd0b1aca11bc8ffd7cefa19dea131274ae8
@@ -1129,16 +1313,15 @@ Use --help with any subcommand for details:
       malwoverview -a 9 -A malware_7.apk
       malwoverview -a 10 -A 925f649617743f0640bdfff4b6b664b9e12761b0e24bbb99ca72740545087ad2.elf
       malwoverview -a 11 -A cd856b20a5e67a105b220be56c361b21aff65cac00ed666862b6f96dd190775e
-      malwoverview -a 12 -A cd856b20a5e67a105b220be56c361b21aff65cac00ed666862b6f96dd190775e
-      malwoverview -a 13 -A cd856b20a5e67a105b220be56c361b21aff65cac00ed666862b6f96dd190775e
-      malwoverview -a 14 -A d90a5552fd4ef88a8b621dd3642e3be8e52115a67e6b17b13bdff461d81cf5a8
-      malwoverview -a 15 -A 925f649617743f0640bdfff4b6b664b9e12761b0e24bbb99ca72740545087ad2
+      malwoverview -a 12 -A /home/remnux/malware/hash_list.txt
+      malwoverview -a 13 -A /home/remnux/malware/samples/
       malwoverview -l 1 -L d3dcc08c9b955cd3f68c198e11d5788869d1b159dc8014d6eaa39e6c258123b0
       malwoverview -l 2
       malwoverview -l 3
       malwoverview -l 4
       malwoverview -l 5
       malwoverview -l 6
+      malwoverview -l 8 -L PE32
       malwoverview -j 1 -J 7c99d644cf39c14208df6d139313eaf95123d569a9206939df996cfded6924a6
       malwoverview -j 2 -J 7c99d644cf39c14208df6d139313eaf95123d569a9206939df996cfded6924a6
       malwoverview -j 3 -J https://unada.us/acme-challenge/3NXwcYNCa/
@@ -1147,6 +1330,7 @@ Use --help with any subcommand for details:
       malwoverview -j 5 -J Icedid
       malwoverview -j 6
       malwoverview -j 7
+      malwoverview -j 8 -J /home/remnux/malware/hash_list.txt
       malwoverview -p 1 -P 1999ba265cd51c94e8ae3a6038b3775bf9a49d6fe57d75dbf1726921af8a7ab2
       malwoverview -p 2 -P 301524c3f959d2d6db9dffdf267ab16a706d3286c0b912f7dda5eb42b6d89996.exe
       malwoverview -p 3 -P 68c11ef39769674123066bcd52e1d687502eb6c4c0788b4f682e8d31c15e5306
@@ -1174,6 +1358,8 @@ Use --help with any subcommand for details:
       malwoverview -m 6 -M win.qakbot
       malwoverview -m 7 -M 3d375d0ead2b63168de86ca2649360d9dcff75b3e0ffa2cf1e50816ec92b3b7d 
       malwoverview -m 8 -M win.qakbot
+      malwoverview -m 9 -M tlp_white
+      malwoverview -m 9 -M tlp_green
       malwoverview -b 1 -B c9d7b5d06cd8ab1a01bf0c5bf41ef2a388e41b4c66b1728494f86ed255a95d48
       malwoverview -b 2 -B Revil | more
       malwoverview -b 3 -B f34d5f2d4577ed6d9ceec516c1f5a744
@@ -1194,13 +1380,13 @@ Use --help with any subcommand for details:
       malwoverview -x 6 -X 220315-xmbp7sdbel
       malwoverview -x 7 -X 220315-xmbp7sdbel
       malwoverview -ip 1 -IP 8.8.8.8
-      malwoverview -ip 2 -IP 8.8.8.8
       malwoverview -ip 3 -IP 8.8.8.8
       malwoverview -b 5 -B <hash> -O <directory>
       malwoverview -b 11 -B /home/remnux/malware/hash_list.txt
       malwoverview -b 12 -B /home/remnux/malware/samples/
-      malwoverview -a 16 -A /home/remnux/malware/hash_list.txt
-      malwoverview -a 17 -A /home/remnux/malware/samples/
+      malwoverview -b 13 -B Windows_Trojan_Emotet
+      malwoverview -b 14
+      malwoverview -b 15
       malwoverview -x 8 -X /home/remnux/malware/hash_list.txt
       malwoverview -x 9 -X /home/remnux/malware/samples/
       malwoverview -ip 4 -IP 8.8.8.8
@@ -1215,6 +1401,8 @@ Use --help with any subcommand for details:
       malwoverview -gn 1 -GN 185.220.100.243
       malwoverview -wh 1 -WH example.com
       malwoverview -wh 2 -WH 8.8.8.8
+      malwoverview -ct 1 -CT iana.org
+      malwoverview -ct 2 -CT iana.org
       malwoverview -u 1 -U https://example.com
       malwoverview -u 2 -U 019ce889-ab8d-768b-894e-3e5bf5401f8d
       malwoverview -u 3 -U task.tags:phishing
@@ -1225,11 +1413,39 @@ Use --help with any subcommand for details:
       malwoverview --extract-iocs /home/remnux/malware/report.pdf
       malwoverview --extract-iocs https://example.com/threat-report.html
       malwoverview --yara /home/remnux/rules/malware.yar --yara-target /home/remnux/malware/samples/
+      malwoverview --yara /home/remnux/rules/ --yara-target /home/remnux/malware/samples/
+      malwoverview --peinfo /home/remnux/malware/samples/
+      malwoverview --peinfo /home/remnux/malware/dropper.exe
+      malwoverview --peinfo /home/remnux/malware/samples/ --entropy-threshold 7.5
+      malwoverview --peinfo /home/remnux/malware/samples/ --output-format csv
+      malwoverview --peinfo /home/remnux/malware/samples/ --no-signature
+      malwoverview --sigcheck /home/remnux/malware/suspicious.exe
+      malwoverview --sigcheck /home/remnux/malware/samples/
+      malwoverview --sigcheck /home/remnux/malware/samples/ --output-format json
+      malwoverview --sigcheck /home/remnux/malware/samples/ --sig-verify-mode all
       malwoverview --interactive
       malwoverview --tui
       malwoverview -v 8 -V <hash> --output-format json
       malwoverview -ip 3 -IP 8.8.8.8 --proxy socks5://127.0.0.1:9050
       malwoverview -v 12 -V <hash> --attack-map
+      malwoverview -a 1 -A <hash> --attack-map
+      malwoverview --correlate-hash <hash> --attack-map
+
+      # Local result cache
+      malwoverview --cache-stats
+      malwoverview --prune-cache
+      malwoverview --clear-cache
+
+      # Download the YARAify rule set and scan with it (-b 15 extracts into
+      # <output directory>/yaraify-rules, so use the same -O for both steps)
+      malwoverview -b 14 -O /home/remnux/rules
+      malwoverview -b 15 -O /home/remnux/rules
+      malwoverview --yara /home/remnux/rules/yaraify-rules --yara-target /home/remnux/malware/samples/
+
+      # Malpedia rule set (-m 9 saves malpedia_yara_<level>.zip; extract it first)
+      malwoverview -m 9 -M tlp_white -O /home/remnux/rules
+      unzip /home/remnux/rules/malpedia_yara_tlp_white.zip -d /home/remnux/rules/malpedia
+      malwoverview --yara /home/remnux/rules/malpedia --yara-target /home/remnux/malware/samples/
 
       # LLM enrichment (append AI threat assessment to any query)
       malwoverview -v 8 -V <hash> --enrich                    # uses provider from config
@@ -1288,7 +1504,6 @@ Use --help with any subcommand for details:
 
       # IP lookups
       malwoverview ip info 8.8.8.8
-      malwoverview ip bgp 8.8.8.8
       malwoverview ip shodan 8.8.8.8
       malwoverview ip abuse 185.220.100.243
       malwoverview ip greynoise 185.220.100.243
@@ -1327,6 +1542,68 @@ Use --help with any subcommand for details:
       malwoverview vt hash <sha256> --output-format json
       malwoverview ip all 8.8.8.8 --proxy socks5://127.0.0.1:9050
       malwoverview vt behavior <sha256> --attack-map
+
+### INTERACTIVE MODE (--interactive):
+
+      malwoverview --interactive
+
+      # Inside the prompt (type "help" for the full list):
+      vt hash ab4d6a82cafc92825a0b88183325855f0c44920da970b42c949d5d5ffdcc0585
+      vt file /home/remnux/malware/sample.exe
+      vt behavior 9d26e19b8fc5819b634397d48183637bacc9e1c62d8b1856b8116141cb8b4000
+      vt batch /home/remnux/malware/hash_list.txt
+      vt retrohunt submit /home/remnux/rules/
+      vt retrohunt list
+      vt retrohunt status 1712345678-abcdef0123456789
+      vt livehunt notifications
+      bazaar yara Windows_Trojan_Emotet
+      bazaar yaradownload
+      bazaar yaraextract
+      bazaar dir /home/remnux/malware/samples/
+      urlhaus batch /home/remnux/malware/hash_list.txt
+      urlhaus payloads
+      triage submit /home/remnux/malware/sample.exe
+      triage pcap 220315-xmbp7sdbel
+      malpedia ruleset tlp_white
+      malpedia meta emotet
+      malshare types
+      malshare type PE32
+      hybrid file /home/remnux/malware/sample.exe
+      hybrid dir /home/remnux/malware/samples/
+      threatfox malwarelist
+      ip batch /home/remnux/malware/ip_list.txt
+      ip multi 8.8.8.8
+      ip all 8.8.8.8
+      crtsh subdomains iana.org
+      crtsh certs iana.org
+      android ha
+      android sendvt com.example.app
+      yara /home/remnux/rules/ /home/remnux/malware/samples/
+      iocs /home/remnux/malware/report.pdf
+      peinfo /home/remnux/malware/samples/
+      peinfo /home/remnux/malware/samples/ 7.5
+      sigcheck /home/remnux/malware/suspicious.exe
+      cache stats
+      cache prune
+      set attack on
+      set enrich claude
+      export json
+      export csv results.csv          # the export path must be inside the current directory
+
+### TUI MODE (--tui):
+
+      malwoverview --tui
+
+      # Pick a service on the left panel, type the query, press Enter.
+      # F3 copies the result, F4 picks an ID out of it, F5 exports the
+      # collected results to json, F6 exports them to csv, Ctrl+L clears.
+      # Ctrl+V (or Shift+Insert) pastes the clipboard into the query box from
+      # anywhere in the dashboard, so a hash can be pasted without clicking
+      # into the box first.
+      # The key list is printed above the results and is written again every
+      # time the pane is cleared, which includes the start of every search.
+      # While the query box has the focus, quitting is Ctrl+Q, because Q itself
+      # has to remain typeable.
 
 ### VULNERABILITIES OPTIONS:
 
@@ -1420,119 +1697,917 @@ Use --help with any subcommand for details:
       # Search for specific CVE in NIST NVD2 (CVSS scores, CWE, CISA KEV status)
       malwoverview -vc 8 -VC CVE-2024-21412
 
+## WHAT IS NEW IN 8.1.0, BY EXAMPLE
+
+Everything this version adds or changes, as commands you can run. The narrative
+version of the same list is the 8.1.0 block under HISTORY, below.
+
+### 1. Options that changed number (read this first)
+
+The only breaking change. The five Hybrid Analysis download options did the same
+thing, so they collapsed into one and the two options after them moved down:
+
+      # Download a sample from Hybrid Analysis  (was -a 11, -a 12, -a 13, -a 14 or -a 15)
+      malwoverview -a 11 -A 495c7e5513fa7766c236e76d8520139139fc4ad7203ddcb2ccdae17bdb691979
+
+      # Batch hash check from a file            (was -a 16)
+      malwoverview -a 12 -A /home/remnux/malware/hashes.txt
+
+      # Scan every file in a directory          (was -a 17)
+      malwoverview -a 13 -A /home/remnux/malware/samples/
+
+Every other option kept its number. All new numbers are additive.
+
+### 2. Local analysis with no API key and no network request
+
+      # Triage a directory: type, size, overlay, overlay size, entropy, signature
+      malwoverview --peinfo /home/remnux/malware/samples/
+
+      # Lower the bar for what counts as packed or encrypted (default 7.0)
+      malwoverview --peinfo /home/remnux/malware/samples/ --entropy-threshold 6.5
+
+      # Skip signature verification on a large sweep
+      malwoverview --peinfo /home/remnux/malware/samples/ --no-signature
+
+      # YARA now accepts a whole rules directory, scanned recursively
+      malwoverview --yara /home/remnux/rules/ --yara-target /home/remnux/malware/samples/
+
+### 3. Authenticode: is it signed, and is the signature valid?
+
+      # One file: status, signer, issuer, certificate dates, thumbprint, serial
+      malwoverview --sigcheck /home/remnux/malware/suspicious.exe
+
+      # A whole directory, one row per file
+      malwoverview --sigcheck /home/remnux/malware/samples/
+
+A file can carry several embedded signatures — commonly SHA-1 for compatibility
+plus SHA-256 — and the signers are often different. The table marks the extra
+ones as (+N); run the single-file form to list them all. Which signature decides
+the status is selectable:
+
+      # Strongest digest decides (default, and what Windows honours)
+      malwoverview --sigcheck /home/remnux/malware/driver.sys --sig-verify-mode best
+
+      # First in file order decides (what sigcheck.exe reports)
+      malwoverview --sigcheck /home/remnux/malware/driver.sys --sig-verify-mode first
+
+      # Every signature must verify (strictest)
+      malwoverview --sigcheck /home/remnux/malware/driver.sys --sig-verify-mode all
+
+      # Any one signature verifying is enough (most permissive)
+      malwoverview --sigcheck /home/remnux/malware/driver.sys --sig-verify-mode any
+
+VirusTotal's own signature data is now shown as well, so a hash lookup reports
+the signer chain, the signing date and every certificate thumbprint:
+
+      # Signature block from VirusTotal, by hash
+      malwoverview -v 8 -V 495c7e5513fa7766c236e76d8520139139fc4ad7203ddcb2ccdae17bdb691979
+
+      # Same block when checking a local file
+      malwoverview -v 1 -V /home/remnux/malware/suspicious.exe
+
+### 4. Certificate Transparency through crt.sh (no API key)
+
+      # Distinct DNS names seen in certificates issued for a domain
+      malwoverview -ct 1 -CT example.com
+
+      # The certificates themselves: identifier, issuer, common name, validity
+      malwoverview -ct 2 -CT example.com
+
+### 5. VirusTotal Retrohunt and Livehunt (needs an enterprise key)
+
+      # Submit a Retrohunt job from a rules file or a rules directory
+      malwoverview -v 14 -V /home/remnux/rules/hunting.yar
+
+      # List your Retrohunt jobs, optionally filtered by status
+      malwoverview -v 15
+      malwoverview -v 15 -V finished
+
+      # Status and progress of one job, then the files it matched
+      malwoverview -v 16 -V 1234abcd-5678-90ef-1234-567890abcdef
+      malwoverview -v 17 -V 1234abcd-5678-90ef-1234-567890abcdef
+
+      # Create a Livehunt ruleset, list your rulesets, list notifications
+      malwoverview -v 18 -V /home/remnux/rules/livehunt.yar
+      malwoverview -v 19
+      malwoverview -v 20
+
+### 6. More places to get YARA rules, and how to pivot on them
+
+A hash lookup now lists the YARA rules that matched the sample, which is where
+the rule name for the next command comes from:
+
+      # 1. look a sample up: the report ends with the rules that matched it
+      malwoverview -b 1 -B 3b89db05cd1e6283a5d23e32eb6a6c17d92953c80c93befa194a0c93a633c1b5
+
+              tags:         elf Mirai upx-dec
+              yara rules:
+                            ELF_Mirai
+                            linux_generic_ipv6_catcher
+                            unixredflags3
+
+      # 2. take one of those names and pull every other sample it matched
+      malwoverview -b 13 -B ELF_Mirai
+
+The rule names also live in the rule sets themselves, which can be downloaded
+and read locally:
+
+      # Download the YARAify rule set from abuse.ch, then extract it.
+      # Both use -O for the working directory; -b 15 finds the archive there.
+      malwoverview -b 14 -O /home/remnux/rules/
+      malwoverview -b 15 -O /home/remnux/rules/
+
+The archive lands as /home/remnux/rules/yaraify-rules.zip and is extracted into
+/home/remnux/rules/yaraify-rules/, one .yar file per rule. That directory is the
+--yara target, and its file names are the rule names:
+
+      malwoverview --yara /home/remnux/rules/yaraify-rules/ --yara-target /home/remnux/malware/samples/
+
+A rule set collected from many authors will not compile cleanly against every
+YARA version. Files with syntax errors are listed and skipped, and the scan runs
+with the rest: a run of the set above compiled 548 of 557 files.
+
+      # The complete Malpedia YARA ruleset for a TLP level
+      malwoverview -m 9 -M white
+
+### 7. Options that were broken and now work
+
+      # -m 1 returned the family list; it now returns family meta information
+      malwoverview -m 1
+
+      # -l 6 lists the file types seen in the last 24 hours, -l 8 lists one of them
+      malwoverview -l 6
+      malwoverview -l 8 -L PE32
+
+      # -ip 3 and -ip 7 used to be identical; -ip 3 is VirusTotal + OTX,
+      # -ip 7 queries every configured service (IPInfo was never reached)
+      malwoverview -ip 3 -IP 8.8.8.8
+      malwoverview -ip 7 -IP 8.8.8.8
+
+      # -j 8 (URLhaus batch hash check) was unreachable
+      malwoverview -j 8 -J /home/remnux/malware/hashes.txt
+
+### 8. Machine-readable output for every option
+
+json and csv now work across the whole tool rather than a third of it:
+
+      malwoverview -v 8 -V 495c7e5513fa7766c236e76d8520139139fc4ad7203ddcb2ccdae17bdb691979 --output-format json
+      malwoverview --sigcheck /home/remnux/malware/samples/ --output-format csv
+      malwoverview -b 6 -B 3 --output-format json
+
+      # LLM enrichment reaches json and csv too, as a typed record
+      malwoverview -v 8 -V 495c7e5513fa7766c236e76d8520139139fc4ad7203ddcb2ccdae17bdb691979 --enrich --output-format json
+
+### 9. Keeping a lookup quiet, and keeping output safe to paste
+
+      # Do not resolve attacker-controlled hostnames to IP addresses
+      malwoverview -j 2 -J http://malicious.example.com/payload.bin --no-resolve
+
+      # Defang the extracted IOCs so the list can be pasted into a ticket
+      malwoverview --extract-iocs /home/remnux/malware/report.txt --defang
+
+      # The source can equally be a URL, so a published report can be read and
+      # its IOCs defanged in one step
+      malwoverview --extract-iocs https://example.com/threat-report.html --defang
+
+      # A vendor blog is mostly navigation, analytics and minified JavaScript, so
+      # the extractor skips <script>, <style> and <svg>, drops links back to the
+      # source site and to known page furniture, and only reports a domain whose
+      # last label is a real top-level domain
+      malwoverview --extract-iocs https://www.fortinet.com/blog/threat-research/dprk-related-campaigns-with-lnk-and-github-c2
+
+      # Turn all of that off and report every regex match in the raw source
+      malwoverview --extract-iocs https://example.com/threat-report.html --no-ioc-filter
+
+### 10. Cache control
+
+      malwoverview --cache-stats
+      malwoverview --prune-cache
+      malwoverview --clear-cache
+
+### 11. Both interactive surfaces reach every service
+
+      # Command-line REPL
+      malwoverview --interactive
+
+      # Full-screen dashboard: 111 services, Ctrl+V pastes, F5 exports json,
+      # F6 exports csv
+      malwoverview --tui
+
+## WHAT IS NEW IN 8.0.0 TO 8.0.5, BY EXAMPLE
+
+8.0.0 added a lot at once, so the commands are grouped here by what they are
+for rather than by option number. 8.0.1 to 8.0.5 were mostly fixes and are at
+the end. Where 8.1.0 later changed an option number, the command below uses the
+current number and says what it used to be.
+
+### 1. Five new services
+
+      # URLScan.io (-u): submit a URL, fetch a result by id, search,
+      # then look up a domain or an IP
+      malwoverview -u 1 -U https://example.com
+      malwoverview -u 2 -U 019ce889-ab8d-768b-894e-3e5bf5401f8d
+      malwoverview -u 3 -U task.tags:phishing
+      malwoverview -u 4 -U example.com
+      malwoverview -u 5 -U 8.8.8.8
+
+      # Shodan (-s): a single IP, or a search query
+      malwoverview -s 1 -S 8.8.8.8
+      malwoverview -s 2 -S "apache"
+
+      # AbuseIPDB (-ab): IP reputation
+      malwoverview -ab 1 -AB 185.220.100.243
+
+      # GreyNoise (-gn): background internet noise, or aimed at you?
+      malwoverview -gn 1 -GN 185.220.100.243
+
+      # Whois / RDAP (-wh): a domain, then an IP
+      malwoverview -wh 1 -WH example.com
+      malwoverview -wh 2 -WH 8.8.8.8
+
+The new IP services are also reachable from -ip, so one address can be taken
+service by service, or through all of them at once:
+
+      malwoverview -ip 4 -IP 8.8.8.8
+      malwoverview -ip 5 -IP 8.8.8.8
+      malwoverview -ip 6 -IP 8.8.8.8
+      malwoverview -ip 7 -IP 8.8.8.8
+
+### 2. One hash across several services in a single command
+
+      malwoverview --correlate-hash ab4d6a82cafc92825a0b88183325855f0c44920da970b42c949d5d5ffdcc0585
+
+### 3. Batch hash checks and directory scans
+
+      # Malware Bazaar: a file of hashes, then a directory of samples
+      malwoverview -b 11 -B /home/remnux/malware/hash_list.txt
+      malwoverview -b 12 -B /home/remnux/malware/samples/
+
+      # Hybrid Analysis (8.0.0 numbered these -a 16 and -a 17)
+      malwoverview -a 12 -A /home/remnux/malware/hash_list.txt
+      malwoverview -a 13 -A /home/remnux/malware/samples/
+
+      # Triage
+      malwoverview -x 8 -X /home/remnux/malware/hash_list.txt
+      malwoverview -x 9 -X /home/remnux/malware/samples/
+
+### 4. IOC extraction and YARA scanning
+
+      # Pull hashes, IPs, URLs, domains, emails and CVEs out of a report
+      malwoverview --extract-iocs /home/remnux/malware/report.txt
+      malwoverview --extract-iocs /home/remnux/malware/report.pdf
+      malwoverview --extract-iocs https://example.com/threat-report.html
+
+      # Scan samples with YARA rules
+      malwoverview --yara /home/remnux/rules/malware.yar --yara-target /home/remnux/malware/samples/
+
+### 5. LLM enrichment of any result
+
+      # Provider taken from the [LLM] section of .malwapi.conf
+      malwoverview -v 8 -V <hash> --enrich
+
+      # Override it per run: claude, gemini, openai or ollama
+      malwoverview -v 8 -V <hash> --enrich --llm claude
+      malwoverview --nist 2 --NIST CVE-2024-3400 --enrich --llm gemini
+
+### 6. Structured output, reports and ATT&CK mapping
+
+      malwoverview -v 8 -V <hash> --output-format json
+      malwoverview -ip 1 -IP 8.8.8.8 --output-format csv
+
+      malwoverview -v 12 -V <hash> --attack-map
+
+      malwoverview -v 8 -V <hash> --report html --report-file /home/remnux/report.html
+      malwoverview -v 8 -V <hash> --report pdf --report-file /home/remnux/report.pdf
+
+### 7. Caching, proxying and verbosity
+
+      malwoverview -v 8 -V <hash> --no-cache
+      malwoverview -v 8 -V <hash> --cache-ttl 86400
+      malwoverview -ip 3 -IP 8.8.8.8 --proxy socks5://127.0.0.1:9050
+      malwoverview -v 8 -V <hash> --quiet
+      malwoverview -v 8 -V <hash> --verbose
+
+### 8. Two interactive surfaces
+
+      malwoverview --interactive
+      malwoverview --tui
+
+### 9. What 8.0.1 to 8.0.5 fixed, as commands
+
+      # 8.0.1: these take a file path again, not only a hash
+      malwoverview -v 1 -V /home/remnux/malware/suspicious.exe
+      malwoverview -a 1 -A /home/remnux/malware/suspicious.exe
+      malwoverview -l 1 -L ab4d6a82cafc92825a0b88183325855f0c44920da970b42c949d5d5ffdcc0585
+
+      # 8.0.2: batch IP check against VirusTotal, Premium then Public API
+      malwoverview -ip 8 -IP /home/remnux/malware/ip_list.txt
+      malwoverview -ip 8 -IP /home/remnux/malware/ip_list.txt -D 1
+
+      # 8.0.2: Android scans work on current devices again, hashing with SHA256
+      malwoverview -y 1
+      malwoverview -y 2
+
+      # 8.0.3 and 8.0.4: Claude enrichment works again and is rendered with colour
+      malwoverview -v 8 -V <hash> --enrich --llm claude
+
+      # 8.0.5: overlay and entropy in the directory check and the hash report
+      malwoverview -d /home/remnux/malware/samples/
+      malwoverview -v 8 -V <hash>
+
 ## HISTORY
+
+Version 8.1.0:
+
+      This version adds YARA hunting and local PE triage, repairs options
+      that did not do what they announced, and includes a set of security
+      fixes.
+
+      ATTENTION: two options changed number. The five Hybrid Analysis download
+      options (-a 11 to -a 15) are now a single option, -a 11. The batch hash
+      check moved to -a 12 (it was -a 16) and the directory scan to -a 13 (it
+      was -a 17). Nothing else changed number.
+
+      NEW OPTIONS
+
+            * --sigcheck: Authenticode signature checking of a file or a
+              directory, with no API key and no network request. Reports VALID,
+              TAMPERED, UNTRUSTED, EXPIRED, MALFORMED, INVALID, NONE or N/A with
+              the signer, issuer and certificate dates. Every embedded signature
+              is listed, each with its own digest algorithm, thumbprint and
+              serial number. Verification needs
+              pip install malwoverview[signature]; without it the status is
+              PRESENT or NONE.
+
+            * --sig-verify-mode any|first|all|best: which signature decides the
+              status of a multi-signed file. Default best.
+
+            * --no-signature: skips signature verification on large directories.
+
+            * --peinfo and --entropy-threshold: local PE triage of a file or
+              directory, listing file type, size, overlay, overlay size, entropy
+              and signature status, highlighting files at or above the threshold
+              (default 7.0). Recursive, no API key.
+
+            * -ct 1|2 and -CT: Certificate Transparency through crt.sh, no API
+              key. -ct 1 lists the DNS names seen in certificates issued for a
+              domain, -ct 2 lists the certificates.
+
+            * -v 14 to -v 20: VirusTotal Retrohunt and Livehunt. Submit a job,
+              list jobs, follow a job, list matched files, create a ruleset, list
+              rulesets and list notifications. Requires a premium key.
+
+            * -b 13, -b 14 and -b 15: Malware Bazaar search by YARA rule name,
+              and download and extraction of the YARAify rule set.
+
+            * -m 9: download of the Malpedia YARA ruleset for a TLP level.
+
+            * -l 8: lists the hashes of a MalShare file type given with -L.
+
+            * -j 8: URLHaus batch hash check, which no option reached before.
+
+            * --cache-stats, --prune-cache and --clear-cache.
+
+            * --no-resolve: does not resolve or geolocate the host names shown by
+              -j 2 and -j 3.
+
+            * --defang: prints the IOCs listed by --extract-iocs as
+              hxxp://example[.]com. Output only.
+
+            * --no-ioc-filter: turns off the --extract-iocs noise filtering and
+              reports every regex match in the raw source.
+
+            * --yara now accepts a directory of rules, each file compiled in its
+              own namespace. A file that fails to compile is reported and
+              skipped.
+
+      REPAIRED OPTIONS
+
+            * -m 1 called the same endpoint as -m 5. It now retrieves the family
+              meta information and accepts an optional filter with -M.
+
+            * -l 6 was labelled "Composite(OLE)" and listed PDF samples. It now
+              lists the file types seen in the last 24 hours with a count.
+
+            * -ip 3 and -ip 7 produced identical output. -ip 3 now queries
+              VirusTotal and AlienVault only; -ip 7 queries every remaining
+              service, including IPInfo.
+
+            * -l 1 wrote a zero byte file for every sample and reported success.
+              Redirects are followed and an empty body is refused.
+
+            * -a 6 to -a 10 and -y 4 always failed with "Requested URI - Not
+              Found". Hybrid Analysis requests no longer go through the www host,
+              whose redirect dropped the upload.
+
+            * -b 14 answered HTTP 301. The rule set is fetched from the working
+              address with the abuse.ch Auth-Key.
+
+            * -v 20 reads the Livehunt notifications from the
+              hunting_notification_files endpoint, which carries the sha256.
+
+            * -b 6, -m 4 and the other options that consume an argument now
+              require it. Eight of them stopped with a raw TypeError when it was
+              omitted.
+
+            * -A now accepts a native Windows path (-a 1 to -a 5), which was
+              rejected as "Input contains invalid characters".
+
+            * --report html, --report pdf and --enrich now work for
+              --correlate-hash, --extract-iocs and --yara, which produced no
+              report.
+
+            * The Malpedia sample and rule downloads no longer end the program
+              before the report and the json/csv export.
+
+            * The validated form of every argument is now the one used. A URL
+              written as hxxp://example[.]com was sent to the service still
+              defanged, and paths such as ~/samples were not expanded.
+
+            * -ip 2 (BGPView) is removed: its domain no longer resolves. The
+              number is kept and reports the removal, pointing at -ip 1 and
+              -ip 7. No other -ip number changed.
+
+            * --defang is documented as applying to --extract-iocs only, which is
+              the only option that reads it.
+
+      NEW BEHAVIOUR
+
+            * -y 1, -y 2 and -y 3 hash every APK of a package instead of the base
+              APK alone. On the test device a scan went from 35 to 79 APKs.
+              -y 4 and -y 5 report when the selected package is a split APK.
+
+            * -b 1 lists the YARA rules that matched the sample, so a name can be
+              passed to -b 13.
+
+            * -v 1 and -v 8 show the signature block VirusTotal already returned:
+              whether it verified, the signer and counter signer chains, the
+              signing date and every certificate with its status, algorithm,
+              dates, serial number and thumbprint.
+
+            * --sigcheck and --peinfo report the certificate thumbprint, serial
+              number and digest algorithm, in the report and in json and csv.
+
+            * --extract-iocs no longer reports a web page's own code. On a vendor
+              blog it returned 855 IOCs, 743 of them "domains" produced by
+              minified JavaScript. Script, style, svg and noscript blocks are
+              skipped, a domain is reported only when its last label is a real
+              top-level domain, and links back to the source site and to page
+              furniture are dropped: 855 IOCs became 16, keeping every sample
+              hash and the command-and-control URLs. Suppression is counted and
+              reported. Code-hosting, paste and messaging services are never
+              suppressed.
+
+            * --extract-iocs names the host and the kind of failure when a fetch
+              fails, instead of printing the raw urllib3 exception.
+
+            * A GreyNoise Community 404 is reported as the result it is, that the
+              address is not an internet scanner, instead of an error.
+
+            * A network failure no longer reaches the user as a Python traceback.
+              43 try blocks caught only ValueError, so a connection error escaped
+              uncaught. The host reported is taken from the parsed URL, never
+              from the exception text.
+
+            * A TLS failure is explained: a handshake that completes and then
+              closes, a certificate that fails verification, a port that answers
+              without TLS and a refused handshake each get their own line. The
+              exception text is read but never printed.
+
+            * crt.sh uses a patient retry policy (5 retries, 2 second backoff)
+              because it answers the same URL with 200, 404 or 502 seconds apart.
+              Every other service keeps the previous policy.
+
+            * HTTP 429 is now retried, at most three times, honouring both forms
+              of Retry-After and never waiting more than 300 seconds. Sample
+              uploads are not retried.
+
+            * The entropy calculation reads the file in blocks instead of loading
+              it whole. The reported value does not change.
+
+            * The YARA scanner no longer changes the working directory of the
+              process while compiling rules.
+
+            * --attack-map matching is exact instead of a substring search, which
+              had attributed unrelated techniques (an empty tag matched all 691).
+              It is extended to the Hybrid Analysis reports and --correlate-hash.
+
+            * --enrich is sent the collected records instead of the text scraped
+              from the terminal, and now works with --output-format json and csv,
+              where it was silently ignored.
+
+            * Every option now produces records for --output-format json and csv.
+              Only a third of them did.
+
+            * MalShare results are included in json and csv.
+
+            * The [INQUEST] and [VIRUSEXCHANGE] sections are removed from
+              .malwapi.conf and the code behind them.
+
+            * The minimum Python version is 3.10, and the classifiers announce
+              3.10 to 3.13.
+
+      INTERACTIVE AND GRAPHICAL MODES
+
+            * --interactive gains every command that only the command line had:
+              the VirusTotal reports, uploads, behaviour report, batch check,
+              Retrohunt and Livehunt; the Malware Bazaar imphash, download,
+              batch, directory, YARA rule search and YARAify rule set; the
+              URLHaus payload download, signature search, payload list, batch
+              check and feed; the Triage submissions, downloads, dynamic report,
+              batch and directory checks; the Malpedia family meta, payload list
+              and rule set; the MalShare file type listings; the Hybrid Analysis
+              submission, batch and directory checks; the ThreatFox family list;
+              the IP batch and multi-service queries; and crtsh, android, yara,
+              iocs and cache. ATT&CK is switched with "set attack on|off".
+
+            * --tui is rebuilt on the module code used by the command line
+              instead of its own copy of every service call: 3013 lines became
+              818, and the service list went from 37 to 111 entries. Results
+              export with F5 (json) and F6 (csv), which it did not support at
+              all.
+
+            * --tui pasting is fixed. A hash pasted before clicking into the
+              query box was discarded without a message, because only the focused
+              widget receives a paste and the dashboard starts on the service
+              list. The paste is now caught for the whole window.
+
+            * --tui gains Ctrl+V and Shift+Insert, which read the clipboard
+              directly for terminals that never send a paste. No third-party
+              package is needed.
+
+            * The --tui key list is written again every time the results pane is
+              cleared, and is built from the key bindings themselves. The key bar
+              keeps Quit (as Ctrl+Q) and Paste while the query box has the focus,
+              and its labels no longer repeat the key.
+
+      REPORTS
+
+            * --peinfo and --sigcheck size their columns from the files being
+              scanned and never shorten the file name, which is commonly the
+              SHA256. Type and Signer stay capped; a shortened value is shortened
+              on screen only.
+
+            * Every table column is measured in terminal cells rather than
+              characters, so a CJK certificate subject or file name no longer
+              pushes the columns out of line. Truncation stops on a character
+              boundary.
+
+            * The rules of a table now equal the sum of its columns, the column
+              headers and rules are neutral, an empty cell reads n/a and the
+              closing counts open with "[+] ". Applied to -j 8, -a 12, -a 13,
+              -b 11, -b 12, -b 13, -x 8, -x 9, -l 6, -s 2, -u 3, --yara,
+              --peinfo and --sigcheck, whose rules disagreed with their columns
+              by as much as 51 characters.
+
+            * The same treatment was completed across every remaining report.
+              No rule is written as a fixed number any more: each is drawn from
+              a named width or from the header it sits under, so the title, the
+              rule and the columns can no longer disagree. 88 rules in 19 files,
+              reaching every service the tool queries.
+
+            * 38 report titles were padded with 28 trailing spaces, putting the
+              title line past the rule below it. Invisible on screen and visible
+              as soon as the output is piped, redirected or copied.
+
+            * -b 6 to -b 10: long values are wrapped to the report width. A
+              reference URL or a comma-joined alias list ran up to 137 columns
+              under a 100 column rule; over one -b 6 run, 52 of 5936 lines did.
+
+            * -j 2 to -j 7: each report is drawn to one width taken from the
+              columns it actually prints, replacing the six different numbers
+              (100, 104, 126, 130, 136 and 146) used before. -j 2 also sizes its
+              URL column from the response and no longer prints its header twice.
+
+            * -l 1 and -l 8 are tables. The header announced three columns
+              centred at 75, 38 and 8 under a rule of 126, while the rows below
+              printed "sha256: ... md5: ... type: ...", so the headers lined up
+              with nothing. A MalShare error is no longer printed underneath a
+              header promising results that never arrive.
+
+            * -ct 1 and -ct 2: the report header is drawn to the width of the
+              table it introduces, and the status, error and count lines are
+              wrapped to it as bulleted advisories instead of running past it.
+
+            * -a 12 and -a 13: a hash Hybrid Analysis has never seen produced a
+              blank row and now reads not found, which is distinct from the
+              verdict "unknown". An HTTP failure is reported as such. -a 13 no
+              longer cuts every file name to 40 characters.
+
+            * -j 8: the Status column showed the raw answer, so a hit read "ok".
+              It now reads found, not found, invalid hash or bad request. The
+              hash column follows the hashes in the file.
+
+            * -x 8 and -x 9: the file name and the tags were cut with a plain
+              slice and are now ellipsised, and the score is coloured by value.
+
+            * -b 11 and -b 12: the Signature column is 17 columns and an unknown
+              sample reads n/a instead of leaving a gap.
+
+            * -s 2 is a table instead of four labelled lines per host, a hundred
+              blocks for one query. The columns are IP, Port, Country, Product,
+              Vulns and Organization. The raw banner is replaced by Product,
+              which is what Shodan parsed from the banner or the Server header;
+              the whole banner still reaches json and csv. Vulns is the number of
+              CVEs Shodan lists against the host.
+
+            * -u 3: the Score column was always zero, because the search endpoint
+              returns no verdicts at all and the code defaulted the value; the
+              json and csv records carried "malicious": "False" for every result
+              of a phishing query. Both fields are gone, replaced by Age(d), the
+              age of the domain in days, coloured by value. Cells are ellipsised
+              instead of sliced, and the IP column no longer cuts an IPv6 address
+              in half.
+
+            * -u 2: the verdict, score, categories, tags and brands are
+              highlighted instead of being drawn like the MIME type, values wrap
+              instead of running off the screen, and the certificate dates are
+              shown as UTC instead of raw epoch seconds. The page title is no
+              longer cut at 80 characters.
+
+            * -u 1: the closing note is prefixed with "[+] ", drawn as advice
+              rather than as one more field, and carries the UUID of the scan
+              just submitted so the retrieval command can be copied.
+
+            * --correlate-hash, -wh 1 and -wh 2 wrap their values, with
+              continuations aligned under the first line. A WHOIS status reached
+              187 columns over a rule of 100, and the ATT&CK IDs of a pulse set
+              reached 200. The SHA512 is broken across lines; the records keep
+              every value on one line.
+
+            * --yara no longer prints the per-file compiler errors, which are a
+              property of the rule set rather than of the samples and pushed the
+              report off the screen. The count stays in the summary and the
+              detail is available with --verbose. The File and Rule columns are
+              sized from their content, because cutting either breaks the link
+              back to the sample or the rule.
+
+            * The certificate block of -v 1 and -v 8 wraps at 120 columns. A
+              status is one sentence per problem joined with commas and reached
+              233 characters on one line.
+
+            * --enrich output wraps to the width of the rule above it, with
+              continuations indented under a list marker. The json and csv
+              records keep the unwrapped answer.
+
+            * -y 1 reports its APK inventory at the end of the table rather than
+              above it, prefixed with "[+] " in the neutral colour. The rows are
+              printed by one thread per package and those threads were never
+              joined outside Windows, so the line is now printed after they are.
+              -y 2 and -y 3 are treated the same way.
+
+            * -ip 3 and -ip 7: the two cross-reference notes are prefixed with
+              "[+] ", where they read as part of the data above them.
+
+            * A YARA rule file that is skipped now reports why. The path took the
+              whole line and the reason was cut off.
+
+            * The json and csv output of --correlate-hash, --extract-iocs and
+              --yara no longer starts with a blank line.
+
+            * The reports are no longer printed to the standard output together
+              with the json or the csv, which made the result impossible to
+              parse, and twenty-nine functions no longer end the program before
+              the export. The text goes to the standard error when a command
+              produces no record, so a failure can be told apart from an empty
+              result.
+
+            * The csv written to the standard output on Windows no longer follows
+              every row with a blank one, and both the json and the csv are
+              written in UTF-8 rather than the encoding of the console.
+
+            * The csv written by "export csv" in the interactive mode no longer
+              ends every line with two carriage returns on Windows.
+
+            * A certificate holding characters the console cannot represent no
+              longer ends the run with UnicodeEncodeError.
+
+            * An invalid escape sequence in the PolySwarm family search no longer
+              emits a SyntaxWarning.
+
+            * A truncated or corrupt ATT&CK cache no longer crashes with "Error
+              while connecting to Virus Total!". It is detected, downloaded again
+              and written atomically.
+
+            * A refused Hybrid Analysis submission no longer stops with a
+              KeyError; the reason given by the service is printed.
+
+            * 43 handlers around a request caught only ValueError, so a network
+              failure could still reach the user as a Python traceback. They now
+              catch the request errors too and name the service and the host.
+              The message never contains the exception text, because MalShare
+              and Shodan carry the API key in the URL.
+
+            * Seven of those handlers in URLHaus were unreachable: a broader
+              handler above them caught the failure first, printed nothing and
+              exited. -j 7 against an unreachable service printed a header, a
+              rule and nothing else, which reads exactly like a search that
+              found nothing.
+
+            * --defang now also defangs the Source line of the IOC extraction
+              report, so the whole report can be pasted somewhere safely. A
+              local file path is left alone, and the exported record keeps the
+              real value in both cases.
+
+            * The SUBCOMMANDS list in this file advertised "ip bgp", removed in
+              this release, omitted "ip batch" and "urlhaus batch", and listed a
+              urlscanio subcommand that has never existed. URLScan.io is
+              reachable through -u.
+
+      COLOURS
+
+            * On a light background neither cyan nor light blue is used any more,
+              only blue. On a dark background both remain in use. This changed
+              298 places across 16 files, including the shared info() colour.
+
+            * An audit of the whole package found 26 further places that broke
+              the rule, some inside a background test and some coloured once for
+              both backgrounds. Green on dark is now light green.
+
+            * The neutral colour was never applied on Windows with a dark
+              background: it was written as an extended 256 colour escape, which
+              the converter colorama uses understands only the basic codes, so it
+              was dropped and the previous colour stayed in force. Every table
+              rule, column header and bulleted advisory was affected.
+
+            * -x 8 and -x 9: the Tags column is light blue on dark and blue on
+              light. It used the same tone as the Hash column beside it.
+
+            * -b 1: the field labels are light cyan on dark and blue on light,
+              matching every other report; the light background used green.
+
+            * -j 8: the hash column is light purple on dark and blue on light.
+              The status column is grey until there is something to report.
+
+            * -ab 1: the field labels are light blue on dark and blue on light.
+
+            * -y 1: the Package column is light blue on dark.
+
+            * -y 2 and -y 3: the Hash column is pink on dark and purple on light.
+
+            * -s 2: the Product column is light blue on dark and cyan on light.
+
+      The changes below are security fixes. None of them changes any command
+      syntax.
+
+            * Fixes terminal escape sequence injection coming from service
+              responses (HIGH). Attacker-controlled fields printed to the
+              terminal (the VirusTotal behavior data and sample names, the
+              Malware Bazaar and URLHaus file names, signatures and tags, the
+              AlienVault OTX pulse names and descriptions, the ThreatFox and
+              Hybrid Analysis fields) were able to move the cursor and overwrite
+              a verdict already printed, set the window title, write to the
+              clipboard or clear the screen. Every JSON response is now sanitized
+              as soon as it is parsed.
+
+            * Fixes the same escape sequence injection in the graphical mode
+              (HIGH). --tui parsed the service responses itself in sixteen
+              places, none of them sanitized. It no longer parses any response.
+
+            * Fixes terminal escape sequence injection coming from the command
+              line and from input files (MEDIUM). -B, -X, -TR, -S, -M, -L, -NIST
+              and the other free text arguments accepted ESC, the 8-bit CSI and
+              backspace, and the validators echoed a rejected value back to the
+              terminal without cleaning it first. This affected Linux and macOS
+              only.
+
+            * Fixes terminal escape sequence injection from three further sources
+              (MEDIUM): the values extracted by --extract-iocs, whose URL pattern
+              excluded whitespace but not the other control characters; the WHOIS
+              fields, which arrive as plain text written by the registrar and the
+              registrant; and the sha256 read from a USB-connected Android
+              device, which is now checked against an allowlist of 64 hexadecimal
+              characters.
+
+            * Fixes a denial of service in --extract-iocs (MEDIUM). The HTML
+              handling removed script, style, svg and comment blocks with a lazy
+              regular expression, which is quadratic when the opening tag is
+              never closed: 50,000 unterminated script tags in 400 KB took 158
+              seconds, and the option reads up to 10 MB from a URL. The blocks
+              are now removed by a single forward scan.
+
+            * Fixes a possible denial of service in the IOC extraction
+              (LOW/MEDIUM): the domain and e-mail regular expressions could take
+              a very long time on a crafted document. The text is now split into
+              bounded tokens before the matching, and the extracted IOCs are
+              unchanged.
+
+            * Fixes CSV formula injection in the exported reports (MEDIUM).
+              Values starting with "=", "+", "-", "@" or a tab were run as
+              formulas by Excel and LibreOffice. They are now prefixed with a
+              single quote, and embedded line breaks are removed.
+
+            * Fixes CSV formula injection in the header row of the exported
+              reports (LOW). The column names are taken from the service
+              response and were written without the protection above.
+
+            * Fixes escape sequences reaching the terminal through an error
+              message in the interactive and graphical modes (LOW). Both printed
+              the text of an unhandled exception without cleaning it.
+
+            * Fixes DNS rebinding in --extract-iocs (MEDIUM). The address that
+              was validated is now the address connected to, while the host name
+              is kept in the Host header and in the TLS SNI. Host names that
+              cannot be resolved are refused. Requests made through a proxy are
+              not pinned.
+
+            * Fixes a bypass of the private address protection using IPv4-mapped
+              IPv6 addresses such as ::ffff:127.0.0.1 (MEDIUM). The multicast and
+              unspecified addresses are also refused now.
+
+            * Fixes the exposure of API keys in error messages (MEDIUM). The
+              Malshare and Shodan keys are replaced by [REDACTED], and the
+              Malshare connection errors are handled instead of raising an
+              exception.
+
+            * Adds a default timeout of 15 seconds to connect and 180 seconds to
+              read on every HTTP request that does not set its own (MEDIUM).
+
+            * Stops sending the full local path of the sample to VirusTotal
+              (LOW/MEDIUM). Only the file name is sent on -v 9.
+
+            * Refuses APK paths containing ".." during the Android scans (LOW).
+
+            * Sanitizes the file name used in the Triage submission (LOW).
+
+            * Removes every escape sequence from the LLM enrichment output, and
+              no longer only the color ones (LOW).
+
+            * Warns when .malwapi.conf is readable by other users and suggests
+              "chmod 600" (Linux and macOS).
 
 Version 8.0.5:
 
       This version:
 
-            * Improves the directory check against VirusTotal (-d option). The
-              "AV Detection" column is renamed to "AV", the Sample and other
-              columns are narrowed and realigned, and two new local-analysis
-              columns are added for each sample: "Overlay", indicating whether
-              the PE has an overlay (YES/NO, or N/A for non-PE files), and
-              "Ent", showing the file entropy as a value from 0.00 to 8.00. The
-              entropy is the highest per-section entropy of the PE (the best
-              signal for packed or encrypted sections), falling back to the
-              whole-file Shannon entropy for non-PE files.
-
-            * Shows the overlay size in the VirusTotal file report (-v 1/2/3).
-              When a PE has an overlay, an "Overlay Size" field is now printed
-              right below the "Overlay" field, formatted in KB/MB rather than
-              raw bytes.
-
-            * Shows overlay information in the VirusTotal hash report (-v 8).
-              The report by hash now reports whether the sample has an overlay
-              (and its size, in KB/MB) directly from VirusTotal's pe_info data,
-              without downloading the sample.
-
-            * Shows the file entropy in the VirusTotal file report (-v 1/2/3).
-              An "Entropy" field is now printed below the overlay information,
-              using the same value as the -d directory check: the highest
-              per-section entropy of the PE (0.00 to 8.00), falling back to the
-              whole-file Shannon entropy for non-PE files.
+            * Adds overlay and entropy reporting to the VirusTotal options: the
+              directory check (-d) gains an "Overlay" column (YES/NO, or N/A for
+              non-PE files) and an "Ent" column (0.00 to 8.00), the file report
+              (-v 1/2/3) gains the overlay, its size in KB/MB and the entropy,
+              and the hash report (-v 8) gains the overlay and size taken from
+              VirusTotal's pe_info data without downloading the sample. Entropy
+              is the highest per-section entropy of the PE, the best signal for
+              packed or encrypted sections, falling back to the whole-file
+              Shannon entropy for non-PE files. "AV Detection" is renamed to
+              "AV" and the -d table is realigned.
 
 Version 8.0.4:
 
       This version:
 
-            * Improves how the LLM enrichment report reads. The Markdown
-              structure the model returns is now rendered with color instead of
-              raw markers: the title and section headings (# and ##) and the
-              **bold** key terms and verdicts are highlighted, and the markdown
-              symbols themselves are removed, so the report reads as a formatted
-              assessment rather than plain markup. On a dark background the body
-              text is shown in a near-white tone for stronger contrast and
-              easier reading, while headings and labels keep their
-              blue/purple/cyan accents. The same rendering is applied
-              consistently across the CLI, the interactive REPL and the TUI, and
-              the enrichment prompts now ask the model to use that heading and
-              bold structure so the formatting stays consistent.
+            * Renders the LLM enrichment report with color instead of raw
+              Markdown: headings and **bold** key terms are highlighted and the
+              markup symbols removed. On a dark background the body text uses a
+              near-white tone while headings keep their blue/purple/cyan
+              accents. The CLI, the REPL and the TUI share the renderer, and the
+              prompts ask the model for that structure so it stays consistent.
 
 Version 8.0.3:
 
       This version:
 
-            * Fixes Claude (Anthropic) LLM enrichment, which had stopped
-              working because the Claude model was hard-coded to a model that
-              has since been retired, causing every Claude enrichment call to
-              fail. The Claude model is now configurable through the new
-              CLAUDE_MODEL option in the [LLM] section of .malwapi.conf
-              (matching the existing GEMINI_MODEL / OPENAI_MODEL / OLLAMA_MODEL
-              options) and defaults to claude-opus-4-8. Claude is now also the
-              default LLM provider. The fix applies to the CLI (--enrich --llm
-              claude), the interactive REPL ("set enrich claude") and the TUI
-              ("Enrich: claude").
+            * Fixes Claude (Anthropic) LLM enrichment, which failed on every
+              call because the model name was hard-coded to a retired model. It
+              is now set by CLAUDE_MODEL in the [LLM] section of .malwapi.conf,
+              alongside GEMINI_MODEL / OPENAI_MODEL / OLLAMA_MODEL, and defaults
+              to claude-opus-4-8. Claude is also the default provider now, and
+              the fix covers the CLI, the REPL and the TUI.
 
 Version 8.0.2:
 
       This version:
 
             * Introduces a batch IP check against VirusTotal (-ip 8 / "ip
-              batch" subcommand). Given a file with one IP address per line,
-              it queries VirusTotal for each address and prints a summary
-              table with the IP Address, Country, AS Owner and Detection
-              ratio (e.g. 8/94). Use -D to choose between the Public (-D 1,
-              sleeps 61s every 4 IPs to honour the rate limit) and Premium
-              (-D 0, default) VT API.
+              batch"), which reads one IP address per line from a file and
+              prints the IP Address, Country, AS Owner and detection ratio.
+              Use -D 1 for the Public API, which sleeps 61s every 4 IPs to
+              honour the rate limit, or -D 0 for Premium (default).
 
-            * Fixes the Android device-scan options (-y 1, -y 2 and -y 3),
-              which had stopped working on current Android versions. The
-              package listing is now parsed to support the modern /data/app
-              layout (the '~~' prefix and '==' path segments introduced in
-              Android 10+), and adb's CRLF output is handled so the options
-              also work on Windows. The on-device hashing now uses sha256sum
-              instead of md5sum, so the table shows the SHA256 hash. Clear
-              messages are also printed when adb is not in the PATH or when
-              no third-party packages are found.
+            * Fixes the Android device-scan options (-y 1, -y 2 and -y 3), which
+              had stopped working on current Android versions. The package
+              listing now understands the modern /data/app layout (the '~~'
+              prefix and '==' segments introduced in Android 10+) and adb's CRLF
+              output, so the options also work on Windows. On-device hashing uses
+              sha256sum instead of md5sum, and clear messages are printed when
+              adb is not in the PATH or no third-party packages are found.
 
-            * Fixes a second SSRF bypass in the IOC extraction feature
-              (--extract-iocs <url>). The URL validator only checked the
-              initial address, but the fetch followed HTTP redirects
-              automatically, so a public URL could redirect to an internal or
-              cloud-metadata address (e.g. 169.254.169.254) after the check had
-              already passed. Redirects are now followed manually and every hop
-              is re-validated against the private/reserved-address allowlist,
-              with a maximum redirect limit.
+            * Fixes two SSRF bypasses in --extract-iocs <url>. The first (issue
+              #96) validated with urlparse() while requests normalized the URL
+              differently, so http://127.0.0.1:6666\@1.1.1.1 passed the
+              public-hostname check and still reached an internal address; the
+              validator now rejects backslashes, whitespace and control
+              characters and validates the effective URL taken from
+              requests.PreparedRequest. The second followed redirects
+              automatically after the check had already passed, letting a public
+              URL reach an internal or cloud-metadata address such as
+              169.254.169.254; every hop is now re-validated against the
+              private/reserved-address allowlist, with a redirect limit.
 
             * Hardens the Android send options (-y 4 and -y 5) against a path
-              traversal triggered by a malicious/compromised connected device.
-              The package name reported by adb is now restricted to valid
-              Android package characters and the output file name is reduced to
-              its base name, so a crafted package listing can no longer cause a
-              file to be written outside the output directory.
-
-            * Fixes an SSRF bypass vulnerability (issue #96) in the IOC
-              extraction URL validator (ioc_extract.py). The previous
-              validation used urlparse() while the actual HTTP request was
-              made by requests, which normalize URLs differently. Crafted
-              inputs such as http://127.0.0.1:6666\@1.1.1.1 could pass the
-              public-hostname check yet still cause requests to connect to
-              an internal address. The validator now rejects URLs containing
-              backslashes, whitespace, or control characters, derives the
-              effective URL via requests.PreparedRequest so the hostname
-              that is actually contacted is the one being validated, and
-              passes that normalized URL to session.get.
+              traversal from a malicious or compromised device: the package name
+              reported by adb is restricted to valid Android package characters
+              and the output file name is reduced to its base name, so a crafted
+              package listing cannot write outside the output directory.
 
 Version 8.0.1:
 

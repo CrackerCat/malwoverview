@@ -1,13 +1,28 @@
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, pad, wrap_field, report_header
 import malwoverview.modules.configvars as cv
 from malwoverview.utils.session import create_session
 from malwoverview.utils.output import collector, is_text_output
+from malwoverview.utils.attack import map_and_display
 import json
+
+
+REPORT_WIDTH = 100
+FIELD_WIDTH = 32
 
 
 class MultipleHashExtractor:
     def __init__(self, extractors):
         self.extractors = extractors
+
+    def _print_field(self, name, value, color):
+        print(color + pad(name + ':', FIELD_WIDTH)
+              + mycolors.reset
+              + wrap_field(value, REPORT_WIDTH, FIELD_WIDTH, split_long=True))
+
+    def _print_continuation(self, value, color):
+        print(pad('', FIELD_WIDTH)
+              + mycolors.reset
+              + wrap_field(value, REPORT_WIDTH, FIELD_WIDTH, split_long=True))
 
     def get_multiple_hash_details(self, hash_value):
         if hash_value is None:
@@ -51,14 +66,12 @@ class MultipleHashExtractor:
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "VIRUSTOTAL".center(100)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("VIRUSTOTAL", REPORT_WIDTH))
 
             attributes = data.get('data', {}).get('attributes', {})
             stats = attributes.get('last_analysis_stats', {})
             classification = attributes.get('popular_threat_classification', {})
 
-            COLSIZE = 28
             infocolor = mycolors.foreground.info(cv.bkg)
             errorcolor = mycolors.foreground.error(cv.bkg)
 
@@ -83,9 +96,9 @@ class MultipleHashExtractor:
                 for field_name, field_value in fields.items():
                     display_value = str(field_value) if field_value is not None else 'N/A'
                     if field_name in ('Malicious', 'Suspicious', 'Threat Classification'):
-                        print(errorcolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, errorcolor)
                     else:
-                        print(infocolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, infocolor)
 
             collector.add({'source': 'VirusTotal', **{k: v for k, v in fields.items()}})
 
@@ -100,8 +113,7 @@ class MultipleHashExtractor:
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "HYBRID ANALYSIS".center(100)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("HYBRID ANALYSIS", REPORT_WIDTH))
 
             if isinstance(data, list) and len(data) > 0:
                 sample = data[0]
@@ -110,7 +122,6 @@ class MultipleHashExtractor:
             else:
                 return
 
-            COLSIZE = 28
             infocolor = mycolors.foreground.info(cv.bkg)
             errorcolor = mycolors.foreground.error(cv.bkg)
 
@@ -131,9 +142,9 @@ class MultipleHashExtractor:
                 for field_name, field_value in fields.items():
                     display_value = str(field_value) if field_value is not None else 'N/A'
                     if field_name in ('Verdict', 'VX Family', 'Threat Score'):
-                        print(errorcolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, errorcolor)
                     else:
-                        print(infocolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, infocolor)
 
             collector.add({'source': 'HybridAnalysis', **{k: v for k, v in fields.items()}})
 
@@ -148,14 +159,12 @@ class MultipleHashExtractor:
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "TRIAGE".center(100)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("TRIAGE", REPORT_WIDTH))
 
             sample = data.get('sample', {})
             analysis = data.get('analysis', {})
             targets = data.get('targets', [])
 
-            COLSIZE = 28
             infocolor = mycolors.foreground.info(cv.bkg)
             errorcolor = mycolors.foreground.error(cv.bkg)
 
@@ -183,14 +192,14 @@ class MultipleHashExtractor:
                 for field_name, field_value in fields.items():
                     display_value = str(field_value) if field_value is not None else 'N/A'
                     if field_name == 'Score':
-                        print(errorcolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, errorcolor)
                     else:
-                        print(infocolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, infocolor)
 
                 if signatures:
-                    print(errorcolor + "Signatures:".ljust(COLSIZE) + "\t" + mycolors.reset + signatures[0])
+                    self._print_field("Signatures", signatures[0], errorcolor)
                     for sig in signatures[1:15]:
-                        print(infocolor + "".ljust(COLSIZE) + "\t" + mycolors.reset + sig)
+                        self._print_continuation(sig, infocolor)
 
             record = {'source': 'Triage', **{k: v for k, v in fields.items()}}
             if signatures:
@@ -208,10 +217,8 @@ class MultipleHashExtractor:
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "ALIENVAULT OTX".center(100)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("ALIENVAULT OTX", REPORT_WIDTH))
 
-            COLSIZE = 28
             infocolor = mycolors.foreground.info(cv.bkg)
             errorcolor = mycolors.foreground.error(cv.bkg)
 
@@ -261,19 +268,21 @@ class MultipleHashExtractor:
                 for field_name, field_value in fields.items():
                     display_value = str(field_value) if field_value is not None else 'N/A'
                     if field_name in ('Malware Families', 'ATT&CK IDs'):
-                        print(errorcolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, errorcolor)
                     else:
-                        print(infocolor + f"{field_name}:".ljust(COLSIZE) + "\t" + mycolors.reset + display_value)
+                        self._print_field(field_name, display_value, infocolor)
 
                 if pulse_names:
-                    print(infocolor + "Related Pulses:".ljust(COLSIZE) + mycolors.reset)
+                    print(infocolor + "Related Pulses:" + mycolors.reset)
                     for pname in pulse_names[:5]:
-                        print(infocolor + "  ".ljust(COLSIZE) + mycolors.reset + pname)
+                        self._print_continuation(pname, infocolor)
 
             record = {'source': 'AlienVault', **{k: v for k, v in fields.items()}}
             if pulse_names:
                 record['related_pulses'] = ', '.join(pulse_names[:5])
             collector.add(record)
+
+            map_and_display(attack_ids + tags, label='AlienVault OTX')
 
         except Exception as e:
             if is_text_output():

@@ -2,7 +2,8 @@ import requests
 import json
 import textwrap
 from datetime import datetime, timedelta
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes
+from malwoverview.utils.output import collector
 from malwoverview.utils.session import create_session
 from malwoverview.utils.cache import cached
 import malwoverview.modules.configvars as cv
@@ -65,9 +66,9 @@ class NISTExtractor():
             # First request: Get a small batch to determine total results (needed for smart start_index)
             response = self.session.get(self.base_url, params=params, timeout=30)
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
             if 'vulnerabilities' not in data:
-                print(mycolors.foreground.yellow + "\nWarning: Unexpected API response structure.\n")
+                print(mycolors.foreground.warning(cv.bkg) + "\nWarning: Unexpected API response structure.\n")
             
             total_results = data.get('totalResults', 0)
             
@@ -80,7 +81,7 @@ class NISTExtractor():
                 
                 response = self.session.get(self.base_url, params=params, timeout=30)
                 response.raise_for_status()
-                data = response.json()
+                data = strip_json_escapes(response.json())
             
             # Apply date filtering or sorting for recent vulnerability discovery
             if last_n_years and query_type in [1, 3, 4, 5]:
@@ -89,7 +90,7 @@ class NISTExtractor():
                 # Filter to current year only by default, then sort
                 data = self._filter_to_current_year(data)
                 data = self._sort_by_date_descending(data)
-            
+
             return data
 
         except requests.exceptions.Timeout:
@@ -145,6 +146,16 @@ class NISTExtractor():
                 if desc.get('lang') == 'en':
                     description = desc.get('value', 'N/A')
                     break
+
+            collector.add({
+                'service': 'nist',
+                'query_type': 'query_cve',
+                'cve': cve_id,
+                'published': published,
+                'last_modified': last_modified,
+                'status': vuln_status,
+                'description': description,
+            })
             metrics = cve_data.get('metrics', {})
             cvss_v2 = metrics.get('cvssMetricV2', [])
             cvss_v3 = metrics.get('cvssMetricV31', []) or metrics.get('cvssMetricV3', [])

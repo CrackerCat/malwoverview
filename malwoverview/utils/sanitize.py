@@ -9,6 +9,7 @@ import os
 import re
 import ipaddress
 from urllib.parse import urlparse
+from malwoverview.utils.colors import strip_terminal_escapes
 
 _HEX_RE = re.compile(r'^[a-fA-F0-9]+$')
 _CVE_RE = re.compile(r'^CVE-\d{4}-\d{4,}$', re.IGNORECASE)
@@ -16,8 +17,21 @@ _DOMAIN_RE = re.compile(
     r'^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?'
     r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)+$'
 )
-_DANGEROUS_CHARS_RE = re.compile(r'[;&|`$<>"\'\\{}\n\r]')
-_DANGEROUS_CHARS_GENERAL_RE = re.compile(r'[;&|`$<>"\'\\{}]')
+_CONTROL_CHARS = r'\x00-\x1f\x7f-\x9f'
+_DANGEROUS_CHARS_RE = re.compile(r'[;&|`$<>"\'\\{}' + _CONTROL_CHARS + r']')
+_DANGEROUS_CHARS_GENERAL_RE = re.compile(r'[;&|`$<>"\'\\{}' + _CONTROL_CHARS + r']')
+_DANGEROUS_CHARS_PATH_RE = re.compile(r'[;&|`$<>"\'{}' + _CONTROL_CHARS + r']')
+
+_ECHO_MAX_LENGTH = 120
+
+
+def safe_echo(value):
+    """Return *value* rendered safe to print back inside an error message."""
+    text = strip_terminal_escapes(str(value))
+    text = text.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+    if len(text) > _ECHO_MAX_LENGTH:
+        text = text[:_ECHO_MAX_LENGTH - 3] + '...'
+    return text
 
 
 def sanitize_hash(value):
@@ -35,11 +49,11 @@ def sanitize_hash_or_path(value):
         return None, "Empty value."
     if len(value) in (32, 40, 64) and _HEX_RE.match(value):
         return value, None
-    if _DANGEROUS_CHARS_GENERAL_RE.search(value):
+    if _DANGEROUS_CHARS_PATH_RE.search(value):
         return None, "Input contains invalid characters."
     resolved = os.path.abspath(os.path.expanduser(value))
     if not os.path.exists(resolved):
-        return None, f"Not a valid hash and file does not exist: {value}"
+        return None, f"Not a valid hash and file does not exist: {safe_echo(value)}"
     return resolved, None
 
 
@@ -50,14 +64,14 @@ def sanitize_ip(value):
         ipaddress.ip_address(value)
         return value, None
     except ValueError:
-        return None, f"Invalid IP address: {value}"
+        return None, f"Invalid IP address: {safe_echo(value)}"
 
 
 def sanitize_domain(value):
     """Validate that *value* looks like a domain name."""
     value = value.strip().lower()
     if not _DOMAIN_RE.match(value) or len(value) > 253:
-        return None, f"Invalid domain name: {value}"
+        return None, f"Invalid domain name: {safe_echo(value)}"
     return value, None
 
 
@@ -79,7 +93,7 @@ def sanitize_cve(value):
     """Validate CVE ID format."""
     value = value.strip().upper()
     if not _CVE_RE.match(value):
-        return None, f"Invalid CVE ID format: {value}. Expected CVE-YYYY-NNNNN."
+        return None, f"Invalid CVE ID format: {safe_echo(value)}. Expected CVE-YYYY-NNNNN."
     return value, None
 
 
@@ -90,7 +104,7 @@ def sanitize_path(value):
         return None, "Empty path."
     resolved = os.path.abspath(os.path.expanduser(value))
     if not os.path.exists(resolved):
-        return None, f"Path does not exist: {resolved}"
+        return None, f"Path does not exist: {safe_echo(resolved)}"
     return resolved, None
 
 
@@ -136,8 +150,19 @@ def sanitize_uuid(value):
     """Validate a UUID string."""
     value = value.strip()
     if not re.match(r'^[a-fA-F0-9\-]{36}$', value):
-        return None, f"Invalid UUID format: {value}"
+        return None, f"Invalid UUID format: {safe_echo(value)}"
     return value, None
+
+
+def defang(value):
+    """Return *value* with the scheme and the host neutralized (hxxp://a[.]com)."""
+    text = str(value)
+    for scheme, replacement in (('https://', 'hxxps://'), ('http://', 'hxxp://')):
+        if text.lower().startswith(scheme):
+            rest = text[len(scheme):]
+            host, sep, path = rest.partition('/')
+            return replacement + host.replace('.', '[.]') + sep + path
+    return text.replace('.', '[.]')
 
 
 def sanitize_export_path(value):
@@ -158,7 +183,7 @@ def sanitize_integer(value, min_val=None, max_val=None):
     try:
         n = int(value)
     except ValueError:
-        return None, f"Invalid integer: {value}"
+        return None, f"Invalid integer: {safe_echo(value)}"
     if min_val is not None and n < min_val:
         return None, f"Value must be >= {min_val}, got {n}"
     if max_val is not None and n > max_val:

@@ -2,8 +2,12 @@ import malwoverview.modules.configvars as cv
 import requests
 import json
 import textwrap
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, report_header, divider
+from malwoverview.utils.output import collector, flat_record
 from malwoverview.utils.session import create_session
+
+
+REPORT_WIDTH = 100
 
 
 class VulnCheckExtractor():
@@ -55,9 +59,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + "VULNCHECK - AVAILABLE INDEXES".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("VULNCHECK - AVAILABLE INDEXES", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -79,14 +81,17 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_list_indexes', _item))
 
             if data and '_benchmarks' in data:
                 benchmarks = data['_benchmarks']
                 if cv.bkg == 1:
                     print(mycolors.foreground.lightcyan + f"{('API Response Time:'):<25}" + mycolors.reset + f"{benchmarks.get('response_time', 'N/A')}")
                 else:
-                    print(mycolors.foreground.cyan + f"{('API Response Time:'):<25}" + mycolors.reset + f"{benchmarks.get('response_time', 'N/A')}")
+                    print(mycolors.foreground.blue + f"{('API Response Time:'):<25}" + mycolors.reset + f"{benchmarks.get('response_time', 'N/A')}")
 
             if data and 'data' in data:
                 indexes = data['data']
@@ -98,7 +103,7 @@ class VulnCheckExtractor():
                 else:
                     for idx in indexes:
                         print(mycolors.foreground.red + f"\n{'Index Name:':<20}" + mycolors.reset + idx.get('name', 'N/A'))
-                        print(mycolors.foreground.cyan + f"{'Href:':<20}" + mycolors.reset + idx.get('href', 'N/A'))
+                        print(mycolors.foreground.blue + f"{'Href:':<20}" + mycolors.reset + idx.get('href', 'N/A'))
             else:
                 msg_color = mycolors.foreground.blue if cv.bkg == 0 else mycolors.foreground.yellow
                 print(msg_color + "\nNo indexes found.\n")
@@ -120,9 +125,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + "VULNCHECK KEV - KNOWN EXPLOITED VULNERABILITIES".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("VULNCHECK KEV - KNOWN EXPLOITED VULNERABILITIES", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -145,7 +148,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_kev', _item))
 
             if data and '_benchmarks' in data:
                 benchmarks = data['_benchmarks']
@@ -157,15 +163,15 @@ class VulnCheckExtractor():
                     print(mycolors.foreground.lightcyan + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
                     print(mycolors.foreground.lightcyan + f"{'Response Time:':<25}" + mycolors.reset + f"{benchmarks.get('response_time', 'N/A')}")
                 else:
-                    print(mycolors.foreground.cyan + f"\n{'Total KEV Entries:':<25}" + mycolors.reset + str(total))
-                    print(mycolors.foreground.cyan + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
-                    print(mycolors.foreground.cyan + f"{'Response Time:':<25}" + mycolors.reset + f"{benchmarks.get('response_time', 'N/A')}")
+                    print(mycolors.foreground.blue + f"\n{'Total KEV Entries:':<25}" + mycolors.reset + str(total))
+                    print(mycolors.foreground.blue + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
+                    print(mycolors.foreground.blue + f"{'Response Time:':<25}" + mycolors.reset + f"{benchmarks.get('response_time', 'N/A')}")
 
             if data and 'data' in data:
                 vulns = data['data']
                 
                 for idx, vuln in enumerate(vulns, 1):
-                    print("\n" + (90 * '-').center(45))
+                    print("\n" + divider(REPORT_WIDTH))
                     
                     if cv.bkg == 1:
                         if 'cve' in vuln:
@@ -203,7 +209,7 @@ class VulnCheckExtractor():
                         
                         if 'knownRansomware' in vuln:
                             ransomware_status = "Yes" if vuln['knownRansomware'] else "No"
-                            color = mycolors.foreground.red if vuln['knownRansomware'] else mycolors.foreground.green
+                            color = mycolors.foreground.error(cv.bkg) if vuln['knownRansomware'] else mycolors.foreground.ok(cv.bkg)
                             print(mycolors.foreground.lightcyan + f"{'Known Ransomware:':<25}" + color + ransomware_status + mycolors.reset)
                         
                         if 'notes' in vuln and vuln['notes']:
@@ -220,40 +226,40 @@ class VulnCheckExtractor():
                         if 'vendorProject' in vuln and vuln['vendorProject']:
                             vendor = str(vuln['vendorProject']) if not isinstance(vuln['vendorProject'], list) else ', '.join(vuln['vendorProject'])
                             wrapped_vendor = textwrap.fill(self.sanitize_text(vendor).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Vendor/Project:':<25}" + mycolors.reset + wrapped_vendor[25:])
+                            print(mycolors.foreground.blue + f"{'Vendor/Project:':<25}" + mycolors.reset + wrapped_vendor[25:])
                         
                         if 'product' in vuln and vuln['product']:
                             product = str(vuln['product']) if not isinstance(vuln['product'], list) else ', '.join(vuln['product'])
                             wrapped_product = textwrap.fill(self.sanitize_text(product).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Product:':<25}" + mycolors.reset + wrapped_product[25:])
+                            print(mycolors.foreground.blue + f"{'Product:':<25}" + mycolors.reset + wrapped_product[25:])
                         
                         if 'shortDescription' in vuln and vuln['shortDescription']:
                             wrapped_desc = textwrap.fill(self.sanitize_text(vuln['shortDescription']).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
+                            print(mycolors.foreground.blue + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
                         
                         if 'vulnerabilityName' in vuln and vuln['vulnerabilityName']:
                             wrapped_vuln = textwrap.fill(self.sanitize_text(str(vuln['vulnerabilityName'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Vulnerability:':<25}" + mycolors.reset + wrapped_vuln[25:])
+                            print(mycolors.foreground.blue + f"{'Vulnerability:':<25}" + mycolors.reset + wrapped_vuln[25:])
                         
                         if 'requiredAction' in vuln and vuln['requiredAction']:
                             wrapped_action = textwrap.fill(self.sanitize_text(str(vuln['requiredAction'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Required Action:':<25}" + mycolors.reset + wrapped_action[25:])
+                            print(mycolors.foreground.blue + f"{'Required Action:':<25}" + mycolors.reset + wrapped_action[25:])
                         
                         if 'dateAdded' in vuln and vuln['dateAdded']:
-                            print(mycolors.foreground.cyan + f"{'Date Added:':<25}" + mycolors.reset + str(vuln['dateAdded']))
+                            print(mycolors.foreground.blue + f"{'Date Added:':<25}" + mycolors.reset + str(vuln['dateAdded']))
                         
                         if 'dueDate' in vuln and vuln['dueDate']:
-                            print(mycolors.foreground.cyan + f"{'Due Date:':<25}" + mycolors.reset + str(vuln['dueDate']))
+                            print(mycolors.foreground.blue + f"{'Due Date:':<25}" + mycolors.reset + str(vuln['dueDate']))
                         
                         if 'knownRansomware' in vuln:
                             ransomware_status = "Yes" if vuln['knownRansomware'] else "No"
-                            color = mycolors.foreground.red if vuln['knownRansomware'] else mycolors.foreground.green
-                            print(mycolors.foreground.cyan + f"{'Known Ransomware:':<25}" + color + ransomware_status + mycolors.reset)
+                            color = mycolors.foreground.error(cv.bkg) if vuln['knownRansomware'] else mycolors.foreground.ok(cv.bkg)
+                            print(mycolors.foreground.blue + f"{'Known Ransomware:':<25}" + color + ransomware_status + mycolors.reset)
                         
                         if 'notes' in vuln and vuln['notes']:
                             notes_text = ' '.join(vuln['notes']) if isinstance(vuln['notes'], list) else str(vuln['notes'])
                             wrapped_notes = textwrap.fill(self.sanitize_text(notes_text).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Notes:':<25}" + mycolors.reset + wrapped_notes[25:])
+                            print(mycolors.foreground.blue + f"{'Notes:':<25}" + mycolors.reset + wrapped_notes[25:])
             else:
                 msg_color = mycolors.foreground.blue if cv.bkg == 0 else mycolors.foreground.yellow
                 print(msg_color + "\nNo vulnerabilities found.\n")
@@ -281,9 +287,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + f"VULNCHECK - CVE SEARCH: {cve_id}".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header(f"VULNCHECK - CVE SEARCH: {cve_id}", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -306,7 +310,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_cve_search', _item))
 
             if data and 'data' in data and len(data['data']) > 0:
                 vuln = data['data'][0]
@@ -346,7 +353,7 @@ class VulnCheckExtractor():
                     
                     if 'knownRansomware' in vuln:
                         ransomware_status = "Yes" if vuln['knownRansomware'] else "No"
-                        color = mycolors.foreground.red if vuln['knownRansomware'] else mycolors.foreground.green
+                        color = mycolors.foreground.error(cv.bkg) if vuln['knownRansomware'] else mycolors.foreground.ok(cv.bkg)
                         print(mycolors.foreground.lightcyan + f"{'Known Ransomware:':<25}" + color + ransomware_status + mycolors.reset)
                     
                     if 'notes' in vuln and vuln['notes']:
@@ -362,42 +369,42 @@ class VulnCheckExtractor():
                     if 'vendorProject' in vuln and vuln['vendorProject']:
                         vendor = str(vuln['vendorProject']) if not isinstance(vuln['vendorProject'], list) else ', '.join(vuln['vendorProject'])
                         wrapped_vendor = textwrap.fill(self.sanitize_text(vendor).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Vendor/Project:':<25}" + mycolors.reset + wrapped_vendor[25:])
+                        print(mycolors.foreground.blue + f"{'Vendor/Project:':<25}" + mycolors.reset + wrapped_vendor[25:])
                     
                     if 'product' in vuln and vuln['product']:
                         product = str(vuln['product']) if not isinstance(vuln['product'], list) else ', '.join(vuln['product'])
                         wrapped_product = textwrap.fill(self.sanitize_text(product).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Product:':<25}" + mycolors.reset + wrapped_product[25:])
+                        print(mycolors.foreground.blue + f"{'Product:':<25}" + mycolors.reset + wrapped_product[25:])
                     
                     if 'shortDescription' in vuln and vuln['shortDescription']:
                         wrapped_desc = textwrap.fill(self.sanitize_text(vuln['shortDescription']).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
+                        print(mycolors.foreground.blue + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
                     
                     if 'vulnerabilityName' in vuln and vuln['vulnerabilityName']:
                         wrapped_vuln = textwrap.fill(self.sanitize_text(str(vuln['vulnerabilityName'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Vulnerability:':<25}" + mycolors.reset + wrapped_vuln[25:])
+                        print(mycolors.foreground.blue + f"{'Vulnerability:':<25}" + mycolors.reset + wrapped_vuln[25:])
                     
                     if 'requiredAction' in vuln and vuln['requiredAction']:
                         wrapped_action = textwrap.fill(self.sanitize_text(str(vuln['requiredAction'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Required Action:':<25}" + mycolors.reset + wrapped_action[25:])
+                        print(mycolors.foreground.blue + f"{'Required Action:':<25}" + mycolors.reset + wrapped_action[25:])
                     
                     if 'dateAdded' in vuln and vuln['dateAdded']:
-                        print(mycolors.foreground.cyan + f"{'Date Added:':<25}" + mycolors.reset + str(vuln['dateAdded']))
+                        print(mycolors.foreground.blue + f"{'Date Added:':<25}" + mycolors.reset + str(vuln['dateAdded']))
                     
                     if 'dueDate' in vuln and vuln['dueDate']:
-                        print(mycolors.foreground.cyan + f"{'Due Date:':<25}" + mycolors.reset + str(vuln['dueDate']))
+                        print(mycolors.foreground.blue + f"{'Due Date:':<25}" + mycolors.reset + str(vuln['dueDate']))
                     
                     if 'knownRansomware' in vuln:
                         ransomware_status = "Yes" if vuln['knownRansomware'] else "No"
-                        color = mycolors.foreground.red if vuln['knownRansomware'] else mycolors.foreground.green
-                        print(mycolors.foreground.cyan + f"{'Known Ransomware:':<25}" + color + ransomware_status + mycolors.reset)
+                        color = mycolors.foreground.error(cv.bkg) if vuln['knownRansomware'] else mycolors.foreground.ok(cv.bkg)
+                        print(mycolors.foreground.blue + f"{'Known Ransomware:':<25}" + color + ransomware_status + mycolors.reset)
                     
                     if 'notes' in vuln and vuln['notes']:
                         notes_text = ' '.join(vuln['notes']) if isinstance(vuln['notes'], list) else str(vuln['notes'])
                         wrapped_notes = textwrap.fill(self.sanitize_text(notes_text).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Notes:':<25}" + mycolors.reset + wrapped_notes[25:])
+                        print(mycolors.foreground.blue + f"{'Notes:':<25}" + mycolors.reset + wrapped_notes[25:])
             else:
-                print(mycolors.foreground.yellow + f"\nCVE {cve_id} not found in VulnCheck KEV database.\n")
+                print(mycolors.foreground.warning(cv.bkg) + f"\nCVE {cve_id} not found in VulnCheck KEV database.\n")
 
         except requests.exceptions.Timeout:
             print(mycolors.foreground.red + "\nError: Request timed out.\n")
@@ -416,9 +423,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + "VULNCHECK - KEV BACKUP DOWNLOAD".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("VULNCHECK - KEV BACKUP DOWNLOAD", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -440,7 +445,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_backup_kev', _item))
 
             backup_url = None
             
@@ -488,32 +496,32 @@ class VulnCheckExtractor():
                         metadata = metadata[0]
                     if isinstance(metadata, dict):
                         if 'date_added' in metadata:
-                            print(mycolors.foreground.cyan + f"{'Date Added:':<25}" + mycolors.reset + str(metadata['date_added']))
+                            print(mycolors.foreground.blue + f"{'Date Added:':<25}" + mycolors.reset + str(metadata['date_added']))
                         if 'date_modified' in metadata or 'modified' in metadata:
                             mod_date = metadata.get('date_modified', metadata.get('modified'))
-                            print(mycolors.foreground.cyan + f"{'Last Modified:':<25}" + mycolors.reset + str(mod_date))
+                            print(mycolors.foreground.blue + f"{'Last Modified:':<25}" + mycolors.reset + str(mod_date))
                         if 'size' in metadata:
-                            print(mycolors.foreground.cyan + f"{'Size:':<25}" + mycolors.reset + str(metadata['size']) + " bytes")
+                            print(mycolors.foreground.blue + f"{'Size:':<25}" + mycolors.reset + str(metadata['size']) + " bytes")
                         if 'sha256' in metadata or 'checksum' in metadata:
                             checksum = metadata.get('sha256', metadata.get('checksum'))
-                            print(mycolors.foreground.cyan + f"{'SHA256:':<25}" + mycolors.reset + str(checksum))
+                            print(mycolors.foreground.blue + f"{'SHA256:':<25}" + mycolors.reset + str(checksum))
                         if 'filename' in metadata:
-                            print(mycolors.foreground.cyan + f"{'Filename:':<25}" + mycolors.reset + str(metadata['filename']))
+                            print(mycolors.foreground.blue + f"{'Filename:':<25}" + mycolors.reset + str(metadata['filename']))
                         if 'url_expires' in metadata:
-                            print(mycolors.foreground.cyan + f"{'URL Expires:':<25}" + mycolors.reset + str(metadata['url_expires']))
+                            print(mycolors.foreground.blue + f"{'URL Expires:':<25}" + mycolors.reset + str(metadata['url_expires']))
                 
-                print("\n" + mycolors.foreground.green + "Note: Download this URL to get the complete KEV dataset as a JSON file." + mycolors.reset)
+                print("\n" + mycolors.foreground.ok(cv.bkg) + "Note: Download this URL to get the complete KEV dataset as a JSON file." + mycolors.reset)
             else:
-                print(mycolors.foreground.yellow + f"\n{'Response structure:':<25}" + mycolors.reset + str(type(data)))
+                print(mycolors.foreground.warning(cv.bkg) + f"\n{'Response structure:':<25}" + mycolors.reset + str(type(data)))
                 if isinstance(data, dict):
-                    print(mycolors.foreground.yellow + f"{'Top-level keys:':<25}" + mycolors.reset + str(list(data.keys())))
+                    print(mycolors.foreground.warning(cv.bkg) + f"{'Top-level keys:':<25}" + mycolors.reset + str(list(data.keys())))
                     if 'data' in data:
-                        print(mycolors.foreground.yellow + f"{'data type:':<25}" + mycolors.reset + str(type(data['data'])))
+                        print(mycolors.foreground.warning(cv.bkg) + f"{'data type:':<25}" + mycolors.reset + str(type(data['data'])))
                         if isinstance(data['data'], dict):
-                            print(mycolors.foreground.yellow + f"{'data keys:':<25}" + mycolors.reset + str(list(data['data'].keys())[:10]))
+                            print(mycolors.foreground.warning(cv.bkg) + f"{'data keys:':<25}" + mycolors.reset + str(list(data['data'].keys())[:10]))
                         elif isinstance(data['data'], list) and len(data['data']) > 0:
-                            print(mycolors.foreground.yellow + f"{'data is list, length:':<25}" + mycolors.reset + str(len(data['data'])))
-                            print(mycolors.foreground.yellow + f"{'first item keys:':<25}" + mycolors.reset + str(list(data['data'][0].keys()) if isinstance(data['data'][0], dict) else 'not a dict'))
+                            print(mycolors.foreground.warning(cv.bkg) + f"{'data is list, length:':<25}" + mycolors.reset + str(len(data['data'])))
+                            print(mycolors.foreground.warning(cv.bkg) + f"{'first item keys:':<25}" + mycolors.reset + str(list(data['data'][0].keys()) if isinstance(data['data'][0], dict) else 'not a dict'))
                 print(mycolors.foreground.red + "\nUnable to find backup download URL in API response.\n")
 
         except requests.exceptions.Timeout:
@@ -533,9 +541,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + "VULNCHECK - MITRE CVE LIST".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("VULNCHECK - MITRE CVE LIST", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -558,7 +564,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_mitre_list', _item))
 
             if data and '_meta' in data:
                 total = data.get('_meta', {}).get('total_documents', 0)
@@ -568,14 +577,14 @@ class VulnCheckExtractor():
                     print(mycolors.foreground.lightcyan + f"\n{'Total CVE Entries:':<25}" + mycolors.reset + str(total))
                     print(mycolors.foreground.lightcyan + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
                 else:
-                    print(mycolors.foreground.cyan + f"\n{'Total CVE Entries:':<25}" + mycolors.reset + str(total))
-                    print(mycolors.foreground.cyan + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
+                    print(mycolors.foreground.blue + f"\n{'Total CVE Entries:':<25}" + mycolors.reset + str(total))
+                    print(mycolors.foreground.blue + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
 
             if data and 'data' in data:
                 cves = data['data']
                 
                 for idx, cve_entry in enumerate(cves, 1):
-                    print("\n" + (90 * '-').center(45))
+                    print("\n" + divider(REPORT_WIDTH))
                     
                     if cv.bkg == 1:
                         if 'cve' in cve_entry:
@@ -607,19 +616,19 @@ class VulnCheckExtractor():
                         
                         if 'title' in cve_entry and cve_entry['title']:
                             wrapped_title = textwrap.fill(self.sanitize_text(str(cve_entry['title'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Title:':<25}" + mycolors.reset + wrapped_title[25:])
+                            print(mycolors.foreground.blue + f"{'Title:':<25}" + mycolors.reset + wrapped_title[25:])
                         
                         if 'summary' in cve_entry and cve_entry['summary']:
                             wrapped_summary = textwrap.fill(self.sanitize_text(str(cve_entry['summary'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'Summary:':<25}" + mycolors.reset + wrapped_summary[25:])
+                            print(mycolors.foreground.blue + f"{'Summary:':<25}" + mycolors.reset + wrapped_summary[25:])
                         
                         if 'date_added' in cve_entry and cve_entry['date_added']:
-                            print(mycolors.foreground.cyan + f"{'Date Added:':<25}" + mycolors.reset + str(cve_entry['date_added']))
+                            print(mycolors.foreground.blue + f"{'Date Added:':<25}" + mycolors.reset + str(cve_entry['date_added']))
                         
                         if 'updated_at' in cve_entry and cve_entry['updated_at']:
-                            print(mycolors.foreground.cyan + f"{'Last Updated:':<25}" + mycolors.reset + str(cve_entry['updated_at']))
+                            print(mycolors.foreground.blue + f"{'Last Updated:':<25}" + mycolors.reset + str(cve_entry['updated_at']))
             else:
-                print(mycolors.foreground.yellow + "\nNo CVEs found.\n")
+                print(mycolors.foreground.warning(cv.bkg) + "\nNo CVEs found.\n")
 
         except requests.exceptions.Timeout:
             print(mycolors.foreground.red + "\nError: Request timed out.\n")
@@ -638,9 +647,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + "VULNCHECK - NIST NVD2 LIST".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header("VULNCHECK - NIST NVD2 LIST", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -663,7 +670,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_nist_list', _item))
 
             if data and '_meta' in data:
                 total = data.get('_meta', {}).get('total_documents', 0)
@@ -673,14 +683,14 @@ class VulnCheckExtractor():
                     print(mycolors.foreground.lightcyan + f"\n{'Total CVE Entries:':<25}" + mycolors.reset + str(total))
                     print(mycolors.foreground.lightcyan + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
                 else:
-                    print(mycolors.foreground.cyan + f"\n{'Total CVE Entries:':<25}" + mycolors.reset + str(total))
-                    print(mycolors.foreground.cyan + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
+                    print(mycolors.foreground.blue + f"\n{'Total CVE Entries:':<25}" + mycolors.reset + str(total))
+                    print(mycolors.foreground.blue + f"{'Fetched:':<25}" + mycolors.reset + str(fetched))
 
             if data and 'data' in data:
                 cves = data['data']
                 
                 for idx, vuln in enumerate(cves, 1):
-                    print("\n" + (90 * '-').center(45))
+                    print("\n" + divider(REPORT_WIDTH))
                     
                     if cv.bkg == 1:
                         if 'id' in vuln:
@@ -724,10 +734,10 @@ class VulnCheckExtractor():
                             print(mycolors.foreground.red + f"\n{label:<25}" + mycolors.reset + str(vuln['id']))
                         
                         if 'vulnStatus' in vuln and vuln['vulnStatus']:
-                            print(mycolors.foreground.cyan + f"{'Status:':<25}" + mycolors.reset + str(vuln['vulnStatus']))
+                            print(mycolors.foreground.blue + f"{'Status:':<25}" + mycolors.reset + str(vuln['vulnStatus']))
                         
                         if 'published' in vuln and vuln['published']:
-                            print(mycolors.foreground.cyan + f"{'Published:':<25}" + mycolors.reset + str(vuln['published']))
+                            print(mycolors.foreground.blue + f"{'Published:':<25}" + mycolors.reset + str(vuln['published']))
                         
                         if 'descriptions' in vuln and vuln['descriptions']:
                             desc_items = vuln['descriptions']
@@ -735,7 +745,7 @@ class VulnCheckExtractor():
                                 desc = desc_items[0]
                                 if isinstance(desc, dict) and 'value' in desc:
                                     wrapped_desc = textwrap.fill(self.sanitize_text(desc['value']).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                                    print(mycolors.foreground.cyan + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
+                                    print(mycolors.foreground.blue + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
                         
                         if 'metrics' in vuln and vuln['metrics']:
                             metrics = vuln['metrics']
@@ -749,7 +759,7 @@ class VulnCheckExtractor():
                                             score = cvss_data['baseScore']
                                             severity = cvss_data.get('baseSeverity', 'N/A')
                                             score_color = mycolors.foreground.red if float(score) >= 7.0 else mycolors.foreground.blue if float(score) >= 4.0 else mycolors.foreground.purple
-                                            print(mycolors.foreground.cyan + f"{'CVSS v3.1:':<25}" + score_color + f"{score} ({severity})" + mycolors.reset)
+                                            print(mycolors.foreground.blue + f"{'CVSS v3.1:':<25}" + score_color + f"{score} ({severity})" + mycolors.reset)
                         
                         if 'cisaExploitAdd' in vuln and vuln['cisaExploitAdd']:
                             print(mycolors.foreground.red + f"{'CISA KEV:':<25}" + mycolors.reset + "Yes (actively exploited)")
@@ -780,9 +790,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + f"VULNCHECK - MITRE CVE SEARCH: {cve_id}".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header(f"VULNCHECK - MITRE CVE SEARCH: {cve_id}", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -805,7 +813,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_mitre_search', _item))
 
             if data and 'data' in data and len(data['data']) > 0:
                 vuln = data['data'][0]
@@ -851,30 +862,30 @@ class VulnCheckExtractor():
                     
                     if 'title' in vuln and vuln['title']:
                         wrapped_title = textwrap.fill(self.sanitize_text(str(vuln['title'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Title:':<25}" + mycolors.reset + wrapped_title[25:])
+                        print(mycolors.foreground.blue + f"{'Title:':<25}" + mycolors.reset + wrapped_title[25:])
                     
                     if 'summary' in vuln and vuln['summary']:
                         wrapped_summary = textwrap.fill(self.sanitize_text(str(vuln['summary'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                        print(mycolors.foreground.cyan + f"{'Summary:':<25}" + mycolors.reset + wrapped_summary[25:])
+                        print(mycolors.foreground.blue + f"{'Summary:':<25}" + mycolors.reset + wrapped_summary[25:])
                     
                     if 'url' in vuln and vuln['url']:
-                        print(mycolors.foreground.cyan + f"{'URL:':<25}" + mycolors.reset + str(vuln['url']))
+                        print(mycolors.foreground.blue + f"{'URL:':<25}" + mycolors.reset + str(vuln['url']))
                     
                     if 'date_added' in vuln and vuln['date_added']:
-                        print(mycolors.foreground.cyan + f"{'Date Added:':<25}" + mycolors.reset + str(vuln['date_added']))
+                        print(mycolors.foreground.blue + f"{'Date Added:':<25}" + mycolors.reset + str(vuln['date_added']))
                     
                     if 'updated_at' in vuln and vuln['updated_at']:
-                        print(mycolors.foreground.cyan + f"{'Last Updated:':<25}" + mycolors.reset + str(vuln['updated_at']))
+                        print(mycolors.foreground.blue + f"{'Last Updated:':<25}" + mycolors.reset + str(vuln['updated_at']))
                     
                     if 'references' in vuln and vuln['references']:
                         refs = vuln['references']
                         if isinstance(refs, list) and len(refs) > 0:
-                            print(mycolors.foreground.cyan + f"{'References:':<25}" + mycolors.reset)
+                            print(mycolors.foreground.blue + f"{'References:':<25}" + mycolors.reset)
                             for ref in refs[:5]:
                                 wrapped_ref = textwrap.fill(str(ref), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                                print(mycolors.foreground.cyan + f"{'  -':<25}" + mycolors.reset + wrapped_ref[25:])
+                                print(mycolors.foreground.blue + f"{'  -':<25}" + mycolors.reset + wrapped_ref[25:])
                             if len(refs) > 5:
-                                print(mycolors.foreground.cyan + f"{'  ...':<25}" + mycolors.reset + f"({len(refs) - 5} more)")
+                                print(mycolors.foreground.blue + f"{'  ...':<25}" + mycolors.reset + f"({len(refs) - 5} more)")
             else:
                 msg_color = mycolors.foreground.blue if cv.bkg == 0 else mycolors.foreground.yellow
                 print(msg_color + f"\nCVE {cve_id} not found in MITRE CVE database.\n")
@@ -902,9 +913,7 @@ class VulnCheckExtractor():
         
         try:
             print("\n")
-            print((mycolors.reset + f"VULNCHECK - NIST NVD2 SEARCH: {cve_id}".center(100)), end='')
-            print((mycolors.reset + "".center(28)), end='')
-            print("\n" + (100 * '-').center(50))
+            print(report_header(f"VULNCHECK - NIST NVD2 SEARCH: {cve_id}", REPORT_WIDTH))
 
             requestsession = create_session()
             requestsession.headers.update({'Accept': 'application/json'})
@@ -927,7 +936,10 @@ class VulnCheckExtractor():
                 return
             
             response.raise_for_status()
-            data = response.json()
+            data = strip_json_escapes(response.json())
+            for _item in (data.get('data') or []):
+                if isinstance(_item, dict):
+                    collector.add(flat_record('vulncheck', 'vulncheck_nist_search', _item))
 
             if data and 'data' in data and len(data['data']) > 0:
                 vuln = data['data'][0]
@@ -1014,13 +1026,13 @@ class VulnCheckExtractor():
                         print(mycolors.foreground.red + f"\n{'CVE ID:':<25}" + mycolors.reset + str(vuln['id']))
                     
                     if 'vulnStatus' in vuln and vuln['vulnStatus']:
-                        print(mycolors.foreground.cyan + f"{'Status:':<25}" + mycolors.reset + str(vuln['vulnStatus']))
+                        print(mycolors.foreground.blue + f"{'Status:':<25}" + mycolors.reset + str(vuln['vulnStatus']))
                     
                     if 'published' in vuln and vuln['published']:
-                        print(mycolors.foreground.cyan + f"{'Published:':<25}" + mycolors.reset + str(vuln['published']))
+                        print(mycolors.foreground.blue + f"{'Published:':<25}" + mycolors.reset + str(vuln['published']))
                     
                     if 'lastModified' in vuln and vuln['lastModified']:
-                        print(mycolors.foreground.cyan + f"{'Last Modified:':<25}" + mycolors.reset + str(vuln['lastModified']))
+                        print(mycolors.foreground.blue + f"{'Last Modified:':<25}" + mycolors.reset + str(vuln['lastModified']))
                     
                     if 'descriptions' in vuln and vuln['descriptions']:
                         desc_items = vuln['descriptions']
@@ -1028,7 +1040,7 @@ class VulnCheckExtractor():
                             desc = desc_items[0]
                             if isinstance(desc, dict) and 'value' in desc:
                                 wrapped_desc = textwrap.fill(self.sanitize_text(desc['value']).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                                print(mycolors.foreground.cyan + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
+                                print(mycolors.foreground.blue + f"{'Description:':<25}" + mycolors.reset + wrapped_desc[25:])
                     
                     if 'metrics' in vuln and vuln['metrics']:
                         metrics = vuln['metrics']
@@ -1043,24 +1055,24 @@ class VulnCheckExtractor():
                                             score = cvss_data['baseScore']
                                             severity = cvss_data.get('baseSeverity', 'N/A')
                                             score_color = mycolors.foreground.red if float(score) >= 7.0 else mycolors.foreground.blue if float(score) >= 4.0 else mycolors.foreground.purple
-                                            print(mycolors.foreground.cyan + f"{'CVSS v3.1 Score:':<25}" + score_color + f"{score} ({severity})" + mycolors.reset)
+                                            print(mycolors.foreground.blue + f"{'CVSS v3.1 Score:':<25}" + score_color + f"{score} ({severity})" + mycolors.reset)
                                         
                                         if 'vectorString' in cvss_data:
-                                            print(mycolors.foreground.cyan + f"{'CVSS Vector:':<25}" + mycolors.reset + str(cvss_data['vectorString']))
+                                            print(mycolors.foreground.blue + f"{'CVSS Vector:':<25}" + mycolors.reset + str(cvss_data['vectorString']))
                     
                     if 'cisaExploitAdd' in vuln and vuln['cisaExploitAdd']:
-                        print(mycolors.foreground.cyan + f"{'CISA KEV Added:':<25}" + mycolors.reset + str(vuln['cisaExploitAdd']))
+                        print(mycolors.foreground.blue + f"{'CISA KEV Added:':<25}" + mycolors.reset + str(vuln['cisaExploitAdd']))
                         
                         if 'cisaActionDue' in vuln and vuln['cisaActionDue']:
-                            print(mycolors.foreground.cyan + f"{'CISA Action Due:':<25}" + mycolors.reset + str(vuln['cisaActionDue']))
+                            print(mycolors.foreground.blue + f"{'CISA Action Due:':<25}" + mycolors.reset + str(vuln['cisaActionDue']))
                         
                         if 'cisaVulnerabilityName' in vuln and vuln['cisaVulnerabilityName']:
                             wrapped_cisa = textwrap.fill(self.sanitize_text(str(vuln['cisaVulnerabilityName'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'CISA Vuln Name:':<25}" + mycolors.reset + wrapped_cisa[25:])
+                            print(mycolors.foreground.blue + f"{'CISA Vuln Name:':<25}" + mycolors.reset + wrapped_cisa[25:])
                         
                         if 'cisaRequiredAction' in vuln and vuln['cisaRequiredAction']:
                             wrapped_action = textwrap.fill(self.sanitize_text(str(vuln['cisaRequiredAction'])).strip(), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                            print(mycolors.foreground.cyan + f"{'CISA Action:':<25}" + mycolors.reset + wrapped_action[25:])
+                            print(mycolors.foreground.blue + f"{'CISA Action:':<25}" + mycolors.reset + wrapped_action[25:])
                     
                     if 'weaknesses' in vuln and vuln['weaknesses']:
                         weak_list = vuln['weaknesses']
@@ -1071,20 +1083,20 @@ class VulnCheckExtractor():
                                     if isinstance(desc_list, list) and len(desc_list) > 0:
                                         for desc_item in desc_list:
                                             if isinstance(desc_item, dict) and 'value' in desc_item:
-                                                print(mycolors.foreground.cyan + f"{'CWE:':<25}" + mycolors.reset + str(desc_item['value']))
+                                                print(mycolors.foreground.blue + f"{'CWE:':<25}" + mycolors.reset + str(desc_item['value']))
                                                 break
                                         break
                     
                     if 'references' in vuln and vuln['references']:
                         refs = vuln['references']
                         if isinstance(refs, list) and len(refs) > 0:
-                            print(mycolors.foreground.cyan + f"{'References:':<25}" + mycolors.reset)
+                            print(mycolors.foreground.blue + f"{'References:':<25}" + mycolors.reset)
                             for ref in refs[:3]:
                                 if isinstance(ref, dict) and 'url' in ref:
                                     wrapped_ref = textwrap.fill(str(ref['url']), width=90, initial_indent=' ' * 25, subsequent_indent=' ' * 25)
-                                    print(mycolors.foreground.cyan + f"{'  -':<25}" + mycolors.reset + wrapped_ref[25:])
+                                    print(mycolors.foreground.blue + f"{'  -':<25}" + mycolors.reset + wrapped_ref[25:])
                             if len(refs) > 3:
-                                print(mycolors.foreground.cyan + f"{'  ...':<25}" + mycolors.reset + f"({len(refs) - 3} more)")
+                                print(mycolors.foreground.blue + f"{'  ...':<25}" + mycolors.reset + f"({len(refs) - 3} more)")
             else:
                 msg_color = mycolors.foreground.blue if cv.bkg == 0 else mycolors.foreground.yellow
                 print(msg_color + f"\nCVE {cve_id} not found in NIST NVD2 database.\n")

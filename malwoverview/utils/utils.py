@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 import geocoder
 import socket
+import malwoverview.modules.configvars as cv
 
 
 def urltoip(urltarget):
@@ -8,6 +9,9 @@ def urltoip(urltarget):
     target = ''
     finalip = ''
     result = ''
+
+    if cv.no_resolve:
+        return "Not Resolved"
 
     try:
         target = urlparse(urltarget)

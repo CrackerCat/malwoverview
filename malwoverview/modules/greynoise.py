@@ -1,10 +1,13 @@
 import malwoverview.modules.configvars as cv
-from malwoverview.utils.colors import mycolors, printr
+from malwoverview.utils.colors import mycolors, printr, strip_json_escapes, report_header
 from malwoverview.utils.session import create_session
 from malwoverview.utils.cache import cached
 from malwoverview.utils.output import collector, is_text_output
 from urllib.parse import quote
 import json
+
+
+REPORT_WIDTH = 100
 
 
 class GreyNoiseExtractor():
@@ -37,11 +40,17 @@ class GreyNoiseExtractor():
             if response.status_code == 403:
                 return {'error': 'Access forbidden. Check your GreyNoise API permissions.'}
             if response.status_code == 404:
+                try:
+                    notseen = strip_json_escapes(response.json())
+                except ValueError:
+                    notseen = {}
+                if isinstance(notseen, dict) and 'ip' in notseen:
+                    return notseen
                 return {'error': 'IP not found in GreyNoise dataset.'}
             if response.status_code == 429:
                 return {'error': 'Rate limit exceeded. Please wait and try again.'}
 
-            data = response.json()
+            data = strip_json_escapes(response.json())
             return data
 
         except ValueError:
@@ -57,9 +66,7 @@ class GreyNoiseExtractor():
         try:
             if is_text_output():
                 print()
-                print((mycolors.reset + "GREYNOISE COMMUNITY IP REPORT".center(100)), end='')
-                print((mycolors.reset + "".center(28)), end='')
-                print("\n" + (100 * '-').center(50))
+                print(report_header("GREYNOISE COMMUNITY IP REPORT", REPORT_WIDTH))
 
             if 'error' in data:
                 if is_text_output():
